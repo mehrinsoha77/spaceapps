@@ -23,7 +23,7 @@ import numpy as np
 
 from ..physics import dose as dose_mod
 from ..physics.limits import GCR_CRUISE_MSV_PER_DAY, s_level
-from ..data.series import dose_channels, sep_flux
+from ..data.series import NOISE_GATE_PFU, dose_channels, sep_flux
 
 TARGETS = ("skin", "eye", "bfo")
 PLACES = ("cabin", "shelter", "eva")
@@ -72,6 +72,7 @@ class Prepared:
     t0_index: int                      # first index of the replay window (after lead-in)
     energies: list = field(default_factory=list)
     sep: np.ndarray = None
+    missing: np.ndarray = None         # (T,) True where a dose channel has no data (after gap fill)
 
 
 LOCATION_FOR_PLACE = {"cabin": "cabin", "shelter": "shelter", "eva": "eva"}
@@ -97,19 +98,24 @@ def prepare(series, locations=None, t0=None):
     ref = series.energies.index(10.0)
     return Prepared(hours=hours, times_iso=series.iso_times(), j10=np.nan_to_num(sep[:, ref]),
                     raw10=series.flux[:, ref], rates=rates, t0_index=t0_index,
-                    energies=list(series.energies), sep=sep)
+                    energies=list(series.energies), sep=sep, missing=np.isnan(d_sep).any(axis=1))
 
 
 # ---------------------------------------------------------------- nowcast
 
 def trend_rate(p, i, policy):
-    """Log-slope (1/h) of SEP >=10 MeV flux over the trailing window. Uses data <= i only."""
+    """Log-slope (1/h) of SEP >=10 MeV flux over the trailing window. Uses data <= i only.
+
+    A start value below the noise gate counts as the gate, so a storm rising out of
+    quiet conditions is "rising" from its first hour. With no data at either end the
+    trend is unknown and taken as 0 (persistence).
+    """
     h = p.hours
     j = p.j10
     k0 = int(np.searchsorted(h, h[i] - policy.trend_h))
-    if k0 >= i or j[i] <= 0 or j[k0] <= 0:
+    if k0 >= i or j[i] <= 0 or p.missing[i] or p.missing[k0]:
         return 0.0
-    return float(np.log(j[i] / j[k0]) / max(h[i] - h[k0], 1e-6))
+    return float(np.log(j[i] / max(j[k0], NOISE_GATE_PFU)) / max(h[i] - h[k0], 1e-6))
 
 
 def projected_dose(rate_now, k, a, b, policy, scenario="high"):
@@ -139,6 +145,7 @@ def nowcast(p, i, policy):
     return {
         "k_per_h": k,
         "rising": k > 0.05,
+        "data_ok": not bool(p.missing[i]),
         "j10_sep": float(p.j10[i]),
         "j10_raw": None if np.isnan(p.raw10[i]) else float(p.raw10[i]),
         "s_level": s_level(None if np.isnan(p.raw10[i]) else float(p.raw10[i])),
@@ -167,6 +174,7 @@ def run(p, schedule, policy=None, apply_policy=True):
     log = []
     sheltered = False
     quiet_steps = 0
+    in_gap = False
 
     def note(i, action, reason, extra=None):
         log.append({"i": i, "t_h": round(float(h_rel[i]), 2), "utc": p.times_iso[i],
@@ -178,6 +186,10 @@ def run(p, schedule, policy=None, apply_policy=True):
         nc = nowcast(p, i, policy)
         k = nc["k_per_h"]
         rn = nc["rate_now"]
+        no_data = not nc["data_ok"]
+        if apply_policy and no_data and not in_gap:
+            note(i, "DATA_GAP", "No proton data: no EVA starts and no shelter exit until data returns.")
+        in_gap = no_data
         burn = next((a for a in acts if a["kind"] == "BURN" and a["state"] == "running"), None)
 
         # ---- start / defer activities whose (possibly delayed) start time has come
@@ -200,7 +212,7 @@ def run(p, schedule, policy=None, apply_policy=True):
             block = apply_policy and (proj_bfo >= policy.eva_start_bfo_msv
                                       or proj_skin >= policy.eva_start_skin_msv
                                       or (policy.eva_block_if_s1_rising and s1_rising)
-                                      or sheltered)
+                                      or sheltered or no_data)
             if block:
                 if a["delay_h"] + dt > a["max_delay_h"]:
                     a.update(state="cancelled", outcome="cancelled")
@@ -217,6 +229,8 @@ def run(p, schedule, policy=None, apply_policy=True):
                             why.append(f">=10 MeV at {nc['j10_raw']:.0f} pfu ({nc['s_level']}) and rising")
                         if sheltered:
                             why.append("crew is in storm shelter")
+                        if no_data:
+                            why.append("no proton data at this hour")
                         note(i, "EVA_DEFER", f"{a['id']}: " + "; ".join(why), {"activity": a["id"],
                              "proj_bfo_msv": round(proj_bfo, 3), "proj_skin_msv": round(proj_skin, 2)})
                     a["delay_h"] += dt
@@ -241,7 +255,7 @@ def run(p, schedule, policy=None, apply_policy=True):
                 if rb >= policy.eva_abort_bfo_msv or rs >= policy.eva_abort_skin_msv:
                     ingress_h = eva["ingress_min"] / 60.0
                     eva.update(state="done", actual_end=h + ingress_h, outcome="terminated",
-                               lost_h=round(remaining - ingress_h, 2))
+                               terminated_h=h, lost_h=round(remaining - ingress_h, 2))
                     note(i, "EVA_TERMINATE", f"{eva['id']}: projected remaining EVA dose BFO {rb:.2f} / "
                          f"skin {rs:.1f} mSv. Ingress {eva['ingress_min']:.0f} min.", {"activity": eva["id"]})
                     eva_frac[i] = min(ingress_h / dt, 1.0) if dt > 0 else 0
@@ -268,7 +282,7 @@ def run(p, schedule, policy=None, apply_policy=True):
                     note(i, "SHELTER_ENTER", f"Projected cabin BFO dose {proj_cabin:.2f} mSv over next "
                          f"{policy.horizon_h:.0f} h >= {policy.shelter_trigger_msv} mSv.",
                          {"proj_cabin_bfo_msv": round(proj_cabin, 2)})
-            elif sheltered:
+            elif sheltered and not no_data:          # no data: hold, never count as quiet
                 if rn["cabin"]["bfo"] < policy.shelter_exit_rate_msv_h and not nc["rising"]:
                     quiet_steps += 1
                 else:
@@ -363,7 +377,8 @@ def backtest(p, schedule, policy=None):
 
 
 def _false_alarms(p, base, pol, policy):
-    """Count shelter episodes and EVA deferrals that, in hindsight, avoided < false_alarm_msv."""
+    """Count shelter episodes, EVA deferrals and EVA terminations that, in hindsight,
+    avoided < false_alarm_msv."""
     r = p.rates["hard"]
     h = p.hours
     i0 = p.t0_index
@@ -393,6 +408,17 @@ def _false_alarms(p, base, pol, policy):
         if would < policy.false_alarm_msv:
             count += 1
             details.append({"kind": "eva_defer", "activity": a_p["id"], "would_have_bfo_msv": round(float(would), 4)})
+    # EVA terminations: dose the rest of the EVA would have had outside
+    for a_p in pol["activities"]:
+        if a_p["kind"] != "EVA" or a_p["outcome"] != "terminated":
+            continue
+        t, end = a_p["terminated_h"], a_p["actual_start"] + a_p["duration_h"]
+        idx = [k for k in range(i0, len(h) - 1) if t <= h[k] - h[i0] < end]
+        would = sum(r["eva"]["bfo"][k] * (h[k + 1] - h[k]) for k in idx)
+        if would < policy.false_alarm_msv:
+            count += 1
+            details.append({"kind": "eva_terminate", "activity": a_p["id"],
+                            "would_have_bfo_msv": round(float(would), 4)})
     return {"count": count, "details": details}
 
 
@@ -416,6 +442,11 @@ def advise(p, i, policy=None, eva_duration_h=6.0):
     nc = nowcast(p, i, policy)
     k, rn = nc["k_per_h"], nc["rate_now"]
     out = {"nowcast": nc, "items": []}
+    if not nc["data_ok"]:                  # never advise from missing data as if it were quiet
+        out["items"] = [{"kind": kind, "verdict": "NO DATA",
+                         "text": "No usable proton data in the feed: no advice. Use another source."}
+                        for kind in ("EVA", "SHELTER", "EVA_IN_PROGRESS")]
+        return out
     proj = {sc: {"bfo": projected_dose(rn["eva"]["bfo"], k, 0, eva_duration_h, policy, sc),
                  "skin": projected_dose(rn["eva"]["skin"], k, 0, eva_duration_h, policy, sc)}
             for sc in ("high", "low")}

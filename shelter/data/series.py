@@ -30,29 +30,27 @@ class FluxSeries:
                           self.synthetic, list(self.notes))
 
 
+NOISE_GATE_PFU = 0.1
+
+
 def fill_short_gaps(flux, max_gap=3):
-    """Log-linear interpolation across gaps of <= max_gap samples, per channel."""
-    out = flux.copy()
-    n = out.shape[0]
+    """Carry the last good value forward over the first `max_gap` samples of a gap, per channel.
+
+    Causal on purpose: a filled value depends only on earlier samples, and whether a
+    sample is filled does not depend on how long the gap turns out to be (unknown at
+    that time). Interpolating to the far side of the gap would use future data.
+    """
+    out = np.array(flux, dtype=float, copy=True)
     for c in range(out.shape[1]):
         col = out[:, c]
-        bad = np.isnan(col) | (col <= 0)
-        if not bad.any() or bad.all():
-            continue
-        idx = np.arange(n)
-        good = ~bad
-        interp = np.exp(np.interp(idx, idx[good], np.log(col[good])))
-        # only fill runs that are short and bounded on both sides
-        run_start = None
-        for i in range(n + 1):
-            is_bad = i < n and bad[i]
-            if is_bad and run_start is None:
-                run_start = i
-            elif not is_bad and run_start is not None:
-                if run_start > 0 and i < n and (i - run_start) <= max_gap:
-                    col[run_start:i] = interp[run_start:i]
-                run_start = None
-        out[:, c] = col
+        last, since = np.nan, 0
+        for i in range(col.size):
+            if np.isfinite(col[i]) and col[i] > 0:
+                last, since = col[i], 0
+                continue
+            since += 1
+            if np.isfinite(last) and since <= max_gap:
+                col[i] = last
     return out
 
 
@@ -84,10 +82,10 @@ def dose_channels(energies, sep, min_e=DOSE_MIN_ENERGY):
     return [energies[k] for k in idx], sep[:, idx]
 
 
-def sep_flux(series, noise_gate_pfu=0.1, ref_energy=10.0):
+def sep_flux(series, noise_gate_pfu=NOISE_GATE_PFU, ref_energy=10.0):
     """Background-subtracted SEP flux (T, C). Rows where the >=ref_energy channel is
     below the noise gate are set to zero; rows with missing data stay NaN."""
-    raw = fill_short_gaps(series.flux)
+    raw = fill_short_gaps(series.flux)      # causal: never fills from the far side of a gap
     bg = causal_background(raw, series.hours)
     sep = np.where(np.isnan(raw), np.nan, np.maximum(raw - np.nan_to_num(bg), 0.0))
     ref = series.energies.index(ref_energy) if ref_energy in series.energies else 0

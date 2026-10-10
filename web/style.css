@@ -129,7 +129,7 @@ table.plain td { border-bottom: 1px solid var(--line); padding: 5px 6px; vertica
 .log li:hover, .log li.active { background: #E9EDF2; }
 .log .act { font-weight: 600; }
 .act.SHELTER_ENTER, .act.EVA_TERMINATE, .act.EVA_CANCEL { color: var(--hazard); }
-.act.EVA_DEFER, .act.SHELTER_BLOCKED { color: #8A6A00; }
+.act.EVA_DEFER, .act.SHELTER_BLOCKED, .act.DATA_GAP { color: #8A6A00; }
 .act.SHELTER_EXIT, .act.EVA_START { color: var(--shield); }
 
 /* live */

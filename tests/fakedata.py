@@ -3,9 +3,12 @@ with made-up numbers so the real-data code paths can run without internet.
 Nothing here is ever written to the real cache or shown as real data."""
 
 import json
+import re
 from datetime import datetime, timedelta
 
 import numpy as np
+
+from shelter.data.omni import OMNI2_FORMAT
 
 QUIET = np.array([2.0, 1.0, 0.6, 0.35, 0.25, 0.2])
 E6 = np.array([1.0, 2.0, 4.0, 10.0, 30.0, 60.0])
@@ -37,6 +40,18 @@ def omni_year_text(year, injections, gap_hours=()):
         lines.append(" ".join(words))
         t += timedelta(hours=1)
     return "\n".join(lines) + "\n"
+
+
+def omni_fixed_width_line(year, doy, hour, protons):
+    """One line in the exact OMNI2 FORTRAN layout; words other than 1-3 and 43-48 are 0."""
+    out, word = [], 0
+    for item in OMNI2_FORMAT.split(","):
+        rep, kind, width, dec = re.fullmatch(r"(\d*)([IF])(\d+)(?:\.(\d+))?", item).groups()
+        for _ in range(int(rep or 1)):
+            word += 1
+            v = {1: year, 2: doy, 3: hour}.get(word, protons[word - 43] if 43 <= word <= 48 else 0)
+            out.append(f"{int(v):{width}d}" if kind == "I" else f"{float(v):{width}.{dec}f}")
+    return "".join(out)
 
 
 def write_fake_cache(cache_dir):

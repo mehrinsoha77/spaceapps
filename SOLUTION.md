@@ -13,8 +13,10 @@ Stack: Python 3.10+ and NumPy only. No framework, no database, no internet neede
 |---|---|
 | Proton stopping power and range match NIST PSTAR within 1.3% for water, 10–200 MeV | **Verified** by unit test |
 | Dose engine matches a 2-million-point brute-force integration within 2% | **Verified** by unit test |
-| Decisions never use future data | **Verified**: changing every value after hour K leaves all decisions up to K identical (unit test) |
-| Parsers read the real OMNI2, SWPC and DONKI formats | Formats taken from the official OMNI2 format document and a live SWPC record; tested against files built in those formats |
+| Decisions never use future data | **Verified**: changing every value after hour K leaves all decisions up to K identical, including when a data gap straddles hour K (unit tests) |
+| Missing data never reads as "quiet" | **Verified**: during a data gap SHELTER starts no EVA and never leaves the shelter (unit test) |
+| Parsers read the real OMNI2, SWPC and DONKI formats | Formats taken from the official OMNI2 format document and a live SWPC record; tested against files built in those formats, including OMNI2's fixed-width layout when a large value runs into its neighbour |
+| MSL/RAD target doses (4.0, 19.5, 1.2 mSv) | Checked against Guo et al. 2015 (arXiv 1503.06631) |
 | Real-storm results (dose saved, false alarms, RAD comparison) | **Not yet measured.** The build environment could not download NASA data. Run `python scripts/fetch_data.py` and `python scripts/run_backtest.py` on your laptop. **Quote only the numbers those scripts print.** |
 | "World-first" | **No.** See section C. The honest claim is narrower and still strong |
 | "Guaranteed to win" | Nobody can promise that. This is built to score well on all five judging criteria |
@@ -78,8 +80,9 @@ Get a free NASA API key at api.nasa.gov and set `NASA_API_KEY`. The `DEMO_KEY` d
  GOES protons (OMNI2 hourly / SWPC 5-min)          DONKI flares, CMEs, SEPs
             │                                                │
             ▼                                                │
- 1. Causal background removal ── 10th percentile of the     │
-    previous 7 days, per channel (never future data)        │
+ 1. Causal cleaning ── gaps ≤3 h carry the last value       │
+    forward; background = 10th percentile of the previous   │
+    7 days, per channel (never future data)                 │
             │                                                │
             ▼                                                │
  2. Spectrum ── piecewise power law through the ≥10 MeV     │
@@ -150,7 +153,7 @@ which makes the integrand smooth. A unit test checks this against brute force.
 
 Every hour SHELTER computes, from data up to that hour only:
 
-- `k` = log-slope of the ≥10 MeV SEP flux over the last 3 h
+- `k` = log-slope of the ≥10 MeV SEP flux over the last 3 h (a start below the 0.1 pfu noise gate counts as 0.1 pfu, so a storm rising out of quiet conditions is "rising" from its first hour)
 - **Rising projection:** `rate·e^(kτ)`, capped at 10× the current rate (used for decisions)
 - **Decaying projection:** `rate·e^(−τ/24h)` (shown for context)
 
@@ -163,7 +166,8 @@ Every hour SHELTER computes, from data up to that hour only:
 | Terminate a running EVA if projected remaining BFO / skin dose ≥ | 1.0 / 10 mSv (30-min ingress counted) |
 | Cancel an EVA if still unsafe after its maximum delay | 48 h |
 | Burns are non-interruptible | crew leaves shelter for the burn; the extra dose is logged |
-| False alarm = an action that avoided < | 0.1 mSv in hindsight |
+| No proton data (gap longer than 3 h) | hold: no EVA start, no shelter exit, logged as DATA_GAP |
+| False alarm = a shelter stay, EVA delay or EVA termination that avoided < | 0.1 mSv in hindsight |
 
 Thresholds are **not** NASA flight rules; those aren't public in this form. The point is that SHELTER makes the trade-off **visible**: change a threshold, rerun, and see dose avoided vs EVA hours lost vs false alarms.
 
@@ -172,8 +176,12 @@ Thresholds are **not** NASA flight rules; those aren't public in this form. The 
 ## H. Proof it works (validation plan and results to fill in)
 
 1. **Physics unit tests** (done): PSTAR agreement, range inversion, Q(L), monotonic dose with shielding and depth, linearity, brute-force kernel check.
-2. **No-look-ahead test** (done): decisions before hour K are identical when all data after K are changed.
-3. **Regression tests** (done): e.g. OMNI's >1 MeV word has a different fill value (999999.99). An early version treated large real values as missing and reacted a day late. A test now guards this.
+2. **No-look-ahead tests** (done): decisions before hour K are identical when all data after K are changed, also when a data gap straddles hour K. (An earlier version filled gaps by interpolating to the far side of the gap, which is future data; gaps are now bridged with the last good value only.)
+3. **Regression tests** (done), each one a bug found and fixed:
+   - OMNI's >1 MeV word has a different fill value (999999.99). An early version treated large real values as missing and reacted a day late. Fill values are now matched exactly; larger values are real.
+   - A data gap read as zero dose, so the crew could leave the shelter during an outage at the storm peak. Missing data now holds every decision.
+   - The "rising" trend was blind for the first 3 h of a storm (it compared against zero flux).
+   - At storm peaks a large OMNI2 value fills its whole column and merges with its neighbour, so that hour was dropped. Such lines are now read by column, and missing hours become explicit gaps.
 4. **MSL/RAD benchmark** (run on your laptop): `python scripts/fetch_data.py` prints SHELTER vs RAD for Jan, Mar and May 2012, plus a leave-one-out calibration. Expect agreement within a factor of 2–3 at best, because GOES is at Earth and MSL was not. Show the chart exactly as it comes out.
 5. **Historical backtest** (run on your laptop): `python scripts/run_backtest.py` covers Oct 1989, Jul 2000, Nov 2001, Oct–Nov 2003, Jan 2005, Jan/Mar/May 2012 and Sep 2017. Copy the totals line into your slides:
    *"Across N storms, SHELTER cut blood-forming-organ dose by X% for Y hours of EVA delay and Z false alarms, using thresholds A and B."*
@@ -205,7 +213,7 @@ shelter/
 ├── web/                       index.html, style.css, app.js (hand-drawn canvas charts, no CDN)
 ├── scripts/fetch_data.py      download + check everything (run while online)
 ├── scripts/run_backtest.py    backtest all cached storms → data/backtest_results.csv
-└── tests/                     34 unittest tests (physics, data, planner, live server)
+└── tests/                     42 unittest tests (physics, data, planner, live server)
 ```
 
 **API**
@@ -260,7 +268,7 @@ If a storm shows "not downloaded yet", rerun step 2. The SYNTHETIC storm always 
 | 0:00 | Replay tab, March 2012 loaded | "A real storm. NASA OMNI2 proton data; flare and CME markers from NASA DONKI." |
 | 0:25 | Point at the EVA schedule and the burn | "One astronaut, six planned EVAs and a burn that can't be interrupted." |
 | 0:40 | Click **Run replay** | "SHELTER now steps through hour by hour and only sees the past." |
-| 0:55 | Drag the scrubber to the first shelter decision | "Here: S3 storm, flux rising. It projected over 10 mSv in 12 h and moved the crew to shelter." |
+| 0:55 | Drag the scrubber to the first shelter decision | "Here: S3 storm, flux rising. It projected [X] mSv in the next 12 h and moved the crew to shelter." (read X off the decision log) |
 | 1:20 | Point at the two strips | "Top: what happened if you follow the schedule. Bottom: with SHELTER. Blue is shelter time; magenta EVAs moved off the storm." |
 | 1:40 | Outcome cards | "Dose avoided, *and* the cost: EVA hours lost, false alarms. We show both." |
 | 2:00 | Open thresholds, raise the shelter trigger, rerun | "Mission planners can tune the trade-off live." |
@@ -278,7 +286,8 @@ Record a backup screen video of this, and set `SHELTER_OFFLINE=1` on stage.
 - **"Why no secondary neutrons?"** They need full transport codes (HZETRN, Geant4). We stated it. The RAD calibration factor absorbs part of it, and an OLTARIS response function can replace our kernel later.
 - **"Why not AI?"** The decision has to be auditable by a flight director, and there are about ten large storms to learn from: far too few to train a model honestly. Simple, testable rules beat a black box here.
 - **"Isn't your projection just a heuristic?"** Yes. It's labelled as one, and the backtest measures how good it is. Replacing it with CCMC SEP Scoreboard forecasts is the next step.
-- **"How do you know there's no look-ahead?"** There's a unit test that changes all future data and checks that earlier decisions don't move.
+- **"How do you know there's no look-ahead?"** There are unit tests that change all future data, with and without a data gap at the cut, and check that earlier decisions don't move.
+- **"What if the data feed drops out mid-storm?"** SHELTER holds: no EVA starts and no shelter exit until data returns, and the log says so. A unit test checks it.
 
 ---
 
