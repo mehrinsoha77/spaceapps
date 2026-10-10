@@ -46,6 +46,7 @@ h1 { font-size: 30px; letter-spacing: .14em; font-weight: 700; line-height: 1; }
 .banner { padding: 10px 24px; font-weight: 600; }
 .banner.synthetic { background: var(--hazard); color: #fff; }
 .banner.stale { background: var(--caution); color: var(--ink); }
+.banner.info { background: var(--shield); color: #fff; font-weight: 500; }
 .banner.error { background: #6B1D1D; color: #fff; }
 
 main { padding: 20px 24px 48px; max-width: 1500px; margin: 0 auto; }

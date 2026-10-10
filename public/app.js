@@ -12,12 +12,13 @@ const CH_COLORS = { "1": "#C9B4C2", "2": "#BE9BB2", "4": "#B07FA0", "5": "#B07FA
 const PLACE_COLOR = { cabin: C.cabin, shelter: C.shield, eva: C.hazard };
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-const state = { meta: null, ev: null, res: null, k: 0, live: null, val: null };
+const state = { meta: null, ev: null, res: null, k: 0, live: null, val: null, loading: null };
 
 /* ------------------------------------------------------------ helpers */
 async function api(path, opts) {
   const r = await fetch(path, opts);
-  const body = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+  const body = await r.json().catch(() => ({ error: `HTTP ${r.status}`,
+    hint: r.status === 504 || r.status === 502 ? "The server timed out while fetching NASA data. Try again: finished downloads are cached." : undefined }));
   if (!r.ok) { const e = new Error(body.error || `HTTP ${r.status}`); e.hint = body.hint; throw e; }
   return body;
 }
@@ -194,18 +195,33 @@ $("#add-eva").onclick = () => schedRow({ id: `EVA-${$("#sched-body").children.le
 $("#add-burn").onclick = () => schedRow({ id: `BURN-${$("#sched-body").children.length + 1}`, kind: "BURN", start_h: 30, duration_h: 1, max_delay_h: 0 });
 $("#reset-sched").onclick = resetSchedule;
 
+function eventLabel(e) {
+  return e.title + (e.cached ? "" : e.loadable ? " – loads from NASA on first use" : " – not downloaded yet");
+}
 async function loadEvent(id) {
   state.res = null; $("#results").hidden = true; $("#strips").hidden = true; $("#scrub").disabled = true;
   const ev = state.meta.events.find((e) => e.id === id);
   $("#event-why").textContent = ev ? ev.why : "";
+  const req = (state.loading = id);
+  $("#run").disabled = true;
   try {
+    banner(ev && !ev.cached ? "info" : null, `Loading ${ev ? ev.title : id}: downloading NASA OMNI2 proton data (first load takes a few seconds)…`);
+    const got = await api(`/api/event?id=${encodeURIComponent(id)}`);
+    if (state.loading !== req) return;            // the user picked another storm meanwhile
+    state.ev = got;
     banner(null);
-    state.ev = await api(`/api/event?id=${encodeURIComponent(id)}`);
   } catch (e) {
+    if (state.loading !== req) return;
     state.ev = null;
     banner("error", `${e.message}${e.hint ? " — " + e.hint : ""}`);
     ["#c-flux", "#c-rate"].forEach((s) => { const { g, w, h } = setupCanvas($(s)); g.clearRect(0, 0, w, h); });
     return;
+  } finally {
+    if (state.loading === req) $("#run").disabled = false;
+  }
+  if (ev && !ev.cached) {                          // now cached on the server
+    ev.cached = true;
+    const opt = [...$("#event").options].find((o) => o.value === id); if (opt) opt.textContent = eventLabel(ev);
   }
   if (state.ev.synthetic) banner("synthetic", "SYNTHETIC TEST DATA – not a real storm. Do not present these numbers as results.");
   else if (state.ev.notes?.length) banner("stale", state.ev.notes.join(" "));
@@ -452,8 +468,10 @@ window.addEventListener("resize", () => { clearTimeout(window._rz); window._rz =
   catch (e) { banner("error", `Server not reachable: ${e.message}`); return; }
   renderPolicy();
   const sel = $("#event");
-  sel.innerHTML = state.meta.events.map((e) => `<option value="${e.id}" ${e.cached ? "" : ""}>${esc(e.title)}${e.cached ? "" : " – not downloaded yet"}</option>`).join("");
-  const first = state.meta.events.find((e) => e.cached && !e.synthetic) || state.meta.events.find((e) => e.synthetic);
+  sel.innerHTML = state.meta.events.map((e) => `<option value="${esc(e.id)}">${esc(eventLabel(e))}</option>`).join("");
+  const evs = state.meta.events;
+  const first = evs.find((e) => e.cached && !e.synthetic) || evs.find((e) => e.id === "2012-03" && e.loadable)
+    || evs.find((e) => e.synthetic);
   sel.value = first.id;
   sel.onchange = () => loadEvent(sel.value);
   if (state.meta.offline) document.title = "SHELTER (offline)";

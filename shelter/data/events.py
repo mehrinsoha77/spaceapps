@@ -73,7 +73,8 @@ def load_event(event_id, with_markers=True):
 
 
 def availability():
-    """Which events can be replayed offline right now (data already cached)."""
+    """Which events can be replayed right now without a download (bundled or cached).
+    `loadable` is also true for events that can still be downloaded (not offline)."""
     out = []
     for ev in EVENTS:
         if ev.get("synthetic"):
@@ -81,9 +82,10 @@ def availability():
         else:
             first = np.datetime64(ev["start"] + "T00:00:00") - np.timedelta64(168, "h")
             years = range(int(str(first)[:4]), int(ev["end"][:4]) + 1)
-            d = config.CACHE_DIR / "omni"
-            ok = all((d / f"omni2_{y}_protons.npz").exists() or (d / f"omni2_{y}.dat").exists() for y in years)
-        out.append({**ev, "cached": ok})
+            dirs = (config.BUNDLED_DIR / "omni", config.CACHE_DIR / "omni")
+            ok = all(any((d / f"omni2_{y}_protons.npz").exists() or (d / f"omni2_{y}.dat").exists()
+                         for d in dirs) for y in years)
+        out.append({**ev, "cached": ok, "loadable": ok or not config.OFFLINE})
     return out
 
 
