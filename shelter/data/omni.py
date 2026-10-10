@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 
 from .. import config
-from .http import fetch_bytes
+from .http import bundled_path, fetch_bytes
 from .series import FluxSeries
 
 OMNI_ENERGIES = [1.0, 2.0, 4.0, 10.0, 30.0, 60.0]
@@ -102,9 +102,10 @@ def _compact_path(year):
 def load_year(year):
     """Proton channels for one year, from the compact cache or SPDF."""
     compact = _compact_path(year)
-    if compact.exists():
-        z = np.load(compact)
-        return z["times"].astype("datetime64[s]"), z["flux"], {"source": "cache", "stale": False}
+    for path, source in ((bundled_path(compact), "bundled"), (compact, "cache")):
+        if path is not None and path.exists():
+            z = np.load(path)
+            return z["times"].astype("datetime64[s]"), z["flux"], {"source": source, "stale": False}
     raw_path = config.CACHE_DIR / "omni" / f"omni2_{year}.dat"
     data, meta = fetch_bytes(config.OMNI2_URL.format(year=year), raw_path)
     times, flux = parse_omni2(data.decode("ascii", errors="replace"), year)

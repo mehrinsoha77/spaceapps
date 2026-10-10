@@ -2,6 +2,9 @@
 
 Run:  python -m shelter.server.app            (http://127.0.0.1:8000)
       SHELTER_OFFLINE=1 python -m shelter.server.app   (cache only, for the stage)
+
+The same request handling is exposed as a WSGI `app`, which is what Vercel runs
+(see api/index.py and vercel.json).
 """
 
 import argparse
@@ -27,7 +30,8 @@ from ..validation import rad
 
 _PREP_CACHE = {}
 _LIVE_CACHE = {"t": 0, "value": None}
-_LOCK = threading.Lock()
+_PREP_LOCK = threading.Lock()      # one storm download/preparation at a time
+_LIVE_LOCK = threading.Lock()      # separate, so the live tab never waits behind a storm download
 
 
 def _jsonable(o):
@@ -48,33 +52,62 @@ def _jsonable(o):
 
 
 def _prepared(event_id):
-    with _LOCK:
+    with _PREP_LOCK:
         if event_id not in _PREP_CACHE:
             series, markers, status = events.load_event(event_id)
             _PREP_CACHE[event_id] = (series, markers, status, engine.prepare(series))
         return _PREP_CACHE[event_id]
 
 
+def _number(v, name, lo=0.0, hi=1e6):
+    """A finite float in [lo, hi], or ValueError (-> HTTP 400)."""
+    x = float(v)
+    if not np.isfinite(x) or not lo <= x <= hi:
+        raise ValueError(f"{name} must be a number between {lo:g} and {hi:g}, got {v!r}")
+    return x
+
+
 def _policy_from(d):
     pol = engine.Policy()
+    if d is None:
+        return pol
+    if not isinstance(d, dict):
+        raise ValueError("policy must be a JSON object")
     names = {f.name for f in fields(engine.Policy)}
-    for k, v in (d or {}).items():
-        if k in names:
-            cur = getattr(pol, k)
-            setattr(pol, k, type(cur)(v) if not isinstance(cur, bool) else bool(v))
+    for k, v in d.items():
+        if k not in names:
+            continue
+        cur = getattr(pol, k)
+        if isinstance(cur, bool):
+            setattr(pol, k, v if isinstance(v, bool) else str(v).lower() in ("1", "true", "yes", "on"))
+        else:
+            setattr(pol, k, type(cur)(_number(v, k)))
     return pol
 
 
+MAX_ACTIVITIES = 50
+
+
 def _schedule_from(items):
+    if items is None:
+        return []
+    if not isinstance(items, list) or len(items) > MAX_ACTIVITIES:
+        raise ValueError(f"schedule must be a list of at most {MAX_ACTIVITIES} activities")
     acts = []
-    for n, a in enumerate(items or []):
+    for n, a in enumerate(items):
+        if not isinstance(a, dict):
+            raise ValueError("each activity must be a JSON object")
         kind = str(a.get("kind", "EVA")).upper()
         if kind not in ("EVA", "BURN"):
             raise ValueError(f"activity kind must be EVA or BURN, got {kind}")
+        if "start_h" not in a or "duration_h" not in a:
+            raise ValueError("each activity needs start_h and duration_h")
         acts.append(engine.Activity(
-            id=str(a.get("id") or f"{kind}-{n + 1}"), kind=kind,
-            start_h=float(a["start_h"]), duration_h=float(a["duration_h"]),
-            max_delay_h=float(a.get("max_delay_h", 48.0)), ingress_min=float(a.get("ingress_min", 30.0))))
+            id=str(a.get("id") or f"{kind}-{n + 1}")[:40], kind=kind,
+            start_h=_number(a["start_h"], "start_h"),
+            duration_h=_number(a["duration_h"], "duration_h", 0.1, 1000),
+            max_delay_h=_number(a.get("max_delay_h", 48.0), "max_delay_h"),
+            ingress_min=_number(a.get("ingress_min", 30.0), "ingress_min", 0, 600)))
     return acts
 
 
@@ -116,6 +149,8 @@ def api_event(q, _b):
 
 def api_replay(_q, body):
     eid = body.get("event_id")
+    if not isinstance(eid, str):
+        raise ValueError("event_id must be a string")
     series, markers, status, p = _prepared(eid)
     policy = _policy_from(body.get("policy"))
     sched = _schedule_from(body.get("schedule"))
@@ -126,9 +161,9 @@ def api_replay(_q, body):
 
 
 def api_live(q, _b):
-    eva_h = float(q.get("eva_h", ["6"])[0])
+    eva_h = _number(q.get("eva_h", ["6"])[0], "eva_h", 0.25, 24)
     now = time.time()
-    with _LOCK:
+    with _LIVE_LOCK:
         if _LIVE_CACHE["value"] is None or now - _LIVE_CACHE["t"] > 240:
             series, meta = swpc.load_live()
             p = engine.prepare(series, t0=str(series.times[-1] - np.timedelta64(48, "h")))
@@ -166,6 +201,81 @@ ROUTES = {
     ("GET", "/api/validation"): api_validation,
 }
 
+JSON = "application/json"
+MAX_BODY = 1 << 20        # replay requests are a few kB; refuse anything absurd
+
+
+def _data_hint():
+    if config.OFFLINE:
+        return "Run `python scripts/fetch_data.py` while online to fill the cache."
+    return ("The NASA/NOAA data server could not be reached. Try again in a minute, "
+            "or pick the SYNTHETIC self-test storm.")
+
+
+def dispatch(method, path, query="", body=b""):
+    """Handle one request. Returns (status, payload bytes, content type).
+
+    Shared by the standard-library server below and the WSGI app (Vercel and other
+    hosts), so every deployment answers identically. Never raises.
+    """
+    fn = ROUTES.get((method, path))
+    if fn is None:
+        if method in ("GET", "HEAD") and not path.startswith("/api/"):
+            return _static(path)
+        if any(p == path for _, p in ROUTES):
+            return 405, _dumps({"error": f"{method} not allowed on {path}"}), JSON
+        return 404, _dumps({"error": "not found"}), JSON
+    try:
+        payload = json.loads(body or b"{}") if method == "POST" else {}
+        if not isinstance(payload, dict):
+            raise ValueError("request body must be a JSON object")
+        return 200, _dumps(fn(parse_qs(query), payload)), JSON
+    except KeyError as exc:
+        return 404, _dumps({"error": f"unknown id {exc}"}), JSON
+    except (DataUnavailable, OmniFormatError) as exc:
+        return 503, _dumps({"error": str(exc), "hint": _data_hint()}), JSON
+    except (ValueError, TypeError) as exc:
+        return 400, _dumps({"error": str(exc)}), JSON
+    except Exception as exc:  # never crash the demo server
+        traceback.print_exc()
+        return 500, _dumps({"error": f"{type(exc).__name__}: {exc}"}), JSON
+
+
+def _dumps(payload):
+    return json.dumps(_jsonable(payload)).encode()
+
+
+def _static(path):
+    rel = "index.html" if path in ("", "/") else path.lstrip("/")
+    target = (config.WEB_DIR / rel).resolve()
+    if not target.is_relative_to(config.WEB_DIR.resolve()) or not target.is_file():
+        return 404, _dumps({"error": "not found"}), JSON
+    ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+    return 200, target.read_bytes(), ctype
+
+
+_REASONS = {200: "OK", 400: "Bad Request", 404: "Not Found", 405: "Method Not Allowed",
+            413: "Payload Too Large", 500: "Internal Server Error", 503: "Service Unavailable"}
+
+
+def app(environ, start_response):
+    """WSGI entry point (Vercel's Python runtime, gunicorn, waitress, ...)."""
+    method = environ.get("REQUEST_METHOD", "GET").upper()
+    try:
+        n = int(environ.get("CONTENT_LENGTH") or 0)
+    except ValueError:
+        n = 0
+    if n > MAX_BODY:
+        code, data, ctype = 413, _dumps({"error": "request body too large"}), JSON
+    else:
+        body = environ["wsgi.input"].read(n) if n > 0 else b""
+        code, data, ctype = dispatch(method, environ.get("PATH_INFO") or "/",
+                                     environ.get("QUERY_STRING", ""), body)
+    start_response(f"{code} {_REASONS.get(code, 'Error')}",
+                   [("Content-Type", ctype), ("Content-Length", str(len(data))),
+                    ("Cache-Control", "no-store")])
+    return [b"" if method == "HEAD" else data]
+
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "SHELTER/1.0"
@@ -173,52 +283,29 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print(f"[{time.strftime('%H:%M:%S')}] {self.address_string()} {fmt % args}")
 
-    def _send(self, code, payload, ctype="application/json"):
-        data = payload if isinstance(payload, bytes) else json.dumps(_jsonable(payload)).encode()
+    def _handle(self, method):
+        url = urlparse(self.path)
+        n = int(self.headers.get("Content-Length") or 0)
+        if n > MAX_BODY:
+            code, data, ctype = 413, _dumps({"error": "request body too large"}), JSON
+        else:
+            code, data, ctype = dispatch(method, url.path, url.query, self.rfile.read(n) if n else b"")
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(data)
-
-    def _dispatch(self, method):
-        url = urlparse(self.path)
-        fn = ROUTES.get((method, url.path))
-        if fn is None:
-            if method == "GET":
-                return self._static(url.path)
-            return self._send(404, {"error": "not found"})
-        try:
-            body = {}
-            if method == "POST":
-                n = int(self.headers.get("Content-Length") or 0)
-                body = json.loads(self.rfile.read(n) or b"{}")
-            return self._send(200, fn(parse_qs(url.query), body))
-        except KeyError as exc:
-            return self._send(404, {"error": f"unknown id {exc}"})
-        except (DataUnavailable, OmniFormatError) as exc:
-            return self._send(503, {"error": str(exc),
-                                    "hint": "Run `python scripts/fetch_data.py` while online to fill the cache."})
-        except (ValueError, TypeError) as exc:
-            return self._send(400, {"error": str(exc)})
-        except Exception as exc:  # never crash the demo server
-            traceback.print_exc()
-            return self._send(500, {"error": f"{type(exc).__name__}: {exc}"})
-
-    def _static(self, path):
-        rel = "index.html" if path in ("", "/") else path.lstrip("/")
-        target = (config.WEB_DIR / rel).resolve()
-        if not target.is_relative_to(config.WEB_DIR.resolve()) or not target.is_file():
-            return self._send(404, {"error": "not found"})
-        ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
-        return self._send(200, target.read_bytes(), ctype)
+        if method != "HEAD":
+            self.wfile.write(data)
 
     def do_GET(self):
-        self._dispatch("GET")
+        self._handle("GET")
+
+    def do_HEAD(self):
+        self._handle("HEAD")
 
     def do_POST(self):
-        self._dispatch("POST")
+        self._handle("POST")
 
 
 def serve(host="127.0.0.1", port=8000):

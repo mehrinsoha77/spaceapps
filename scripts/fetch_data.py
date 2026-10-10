@@ -3,8 +3,14 @@
 Run this while online (it takes a minute or two):
     python scripts/fetch_data.py
 Afterwards the app works with no internet:  SHELTER_OFFLINE=1 python -m shelter.server.app
+
+    python scripts/fetch_data.py --bundle
+also copies the historical data into data/bundled/ (about 2 MB). Commit that folder
+and every deployment (e.g. Vercel) replays the storms without contacting NASA.
 """
 
+import argparse
+import shutil
 import sys
 from pathlib import Path
 
@@ -16,7 +22,32 @@ from shelter.data.http import DataUnavailable   # noqa: E402
 from shelter.validation import rad              # noqa: E402
 
 
+def bundle(log=print):
+    """Copy cached OMNI2 years and DONKI markers for the catalog storms into data/bundled/."""
+    n = 0
+    for src in sorted((config.CACHE_DIR / "omni").glob("omni2_*_protons.npz")):
+        dst = config.BUNDLED_DIR / "omni" / src.name
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        n += 1
+    for ev in events.EVENTS:
+        d = config.CACHE_DIR / "events" / ev["id"]
+        for src in sorted(d.glob("donki_*.json")) if d.is_dir() else []:
+            if src.name.endswith(".meta.json"):
+                continue
+            dst = config.BUNDLED_DIR / "events" / ev["id"] / src.name
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+            n += 1
+    size = sum(f.stat().st_size for f in config.BUNDLED_DIR.rglob("*") if f.is_file())
+    log(f"Bundled {n} files into {config.BUNDLED_DIR} ({size / 1e6:.1f} MB). Commit that folder to deploy with data.")
+    return n
+
+
 def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--bundle", action="store_true", help="also copy the data into data/bundled/ for deployment")
+    args = ap.parse_args()
     if config.OFFLINE:
         print("SHELTER_OFFLINE=1 is set; unset it to download.")
         return 2
@@ -47,6 +78,10 @@ def main():
     except (DataUnavailable, ValueError, KeyError) as exc:
         print(f"[FAIL] benchmark: {exc}")
         failed.append("benchmark")
+
+    if args.bundle:
+        print("\nBundle for deployment")
+        bundle()
 
     print("\nDone." if not failed else f"\nDone with problems: {', '.join(failed)}. Re-run to retry; cached items are kept.")
     return 1 if failed else 0

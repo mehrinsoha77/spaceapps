@@ -3,7 +3,7 @@
 **SHELTER turns NASA and NOAA solar-storm data into crew schedule decisions — hold this EVA, end that one, move to the storm shelter now — and proves each rule by replaying real historical storms hour by hour without looking ahead.**
 
 Target: NASA Space Apps Challenge 2026 (14–15 November), astronaut-health challenge.
-Stack: Python 3.10+ and NumPy only. No framework, no database, no internet needed on stage.
+Stack: Python 3.10+ and NumPy only. No framework, no database, no internet needed on stage. Runs locally or on Vercel (section J).
 
 ---
 
@@ -17,6 +17,7 @@ Stack: Python 3.10+ and NumPy only. No framework, no database, no internet neede
 | Missing data never reads as "quiet" | **Verified**: during a data gap SHELTER starts no EVA and never leaves the shelter (unit test) |
 | Parsers read the real OMNI2, SWPC and DONKI formats | Formats taken from the official OMNI2 format document and a live SWPC record; tested against files built in those formats, including OMNI2's fixed-width layout when a large value runs into its neighbour |
 | MSL/RAD target doses (4.0, 19.5, 1.2 mSv) | Checked against Guo et al. 2015 (arXiv 1503.06631) |
+| Deploys to Vercel | Built with the Vercel CLI (`vercel build`) and the built function run through Vercel's own Python runtime: every API route answers, read-only code folder, data cached in `/tmp`. Not yet run on a live Vercel URL |
 | Real-storm results (dose saved, false alarms, RAD comparison) | **Not yet measured.** The build environment could not download NASA data. Run `python scripts/fetch_data.py` and `python scripts/run_backtest.py` on your laptop. **Quote only the numbers those scripts print.** |
 | "World-first" | **No.** See section C. The honest claim is narrower and still strong |
 | "Guaranteed to win" | Nobody can promise that. This is built to score well on all five judging criteria |
@@ -192,16 +193,18 @@ Thresholds are **not** NASA flight rules; those aren't public in this form. The 
 
 ```
 shelter/
+├── api/index.py               Vercel entry point (exposes the WSGI app)
+├── vercel.json                Vercel: static page from public/, /api/* → Python function
 ├── shelter/
-│   ├── config.py              data URLs, cache folder, offline switch, API key
+│   ├── config.py              data URLs, cache folder (/tmp on Vercel), bundled data, offline switch, API key
 │   ├── physics/
 │   │   ├── stopping.py        Bethe stopping power, CSDA range, Q(L)
 │   │   ├── spectrum.py        integral channels → differential spectrum
 │   │   ├── dose.py            shielding distributions, organ depths, dose kernels
 │   │   └── limits.py          NASA-STD-3001 / NCRP reference limits, NOAA S-scale
 │   ├── data/
-│   │   ├── http.py            download + file cache + offline fallback (marks stale data)
-│   │   ├── omni.py            NASA SPDF OMNI2 parser (55 words; per-word fill values)
+│   │   ├── http.py            download + file cache + bundled copy + offline fallback (marks stale data)
+│   │   ├── omni.py            NASA SPDF OMNI2 parser (55 words or fixed columns; per-word fill values)
 │   │   ├── swpc.py            NOAA SWPC live GOES JSON parser
 │   │   ├── donki.py           NASA DONKI markers (api.nasa.gov → CCMC fallback → cache)
 │   │   ├── series.py          time series, gap filling, causal background, ≥10 MeV channels
@@ -209,11 +212,13 @@ shelter/
 │   │   └── synthetic.py       labelled SYNTHETIC self-test storm (red banner in UI)
 │   ├── planner/engine.py      nowcast, flight rules, simulation, backtest, live advice
 │   ├── validation/rad.py      MSL/RAD benchmark + leave-one-out calibration
-│   └── server/app.py          standard-library HTTP server + JSON API + static files
-├── web/                       index.html, style.css, app.js (hand-drawn canvas charts, no CDN)
-├── scripts/fetch_data.py      download + check everything (run while online)
+│   └── server/app.py          JSON API + static files: one dispatch() used by the standard-library
+│                              server (local) and the WSGI app (Vercel, gunicorn, ...)
+├── public/                    index.html, style.css, app.js (hand-drawn canvas charts, no CDN)
+├── data/bundled/              optional committed copy of the storm data (fetch_data.py --bundle)
+├── scripts/fetch_data.py      download + check everything (run while online); --bundle for deployment
 ├── scripts/run_backtest.py    backtest all cached storms → data/backtest_results.csv
-└── tests/                     42 unittest tests (physics, data, planner, live server)
+└── tests/                     56 unittest tests (physics, data, planner, servers, deployment, downloads)
 ```
 
 **API**
@@ -226,7 +231,9 @@ shelter/
 | GET | `/api/live?eva_h=6` | Latest GOES status, EVA GO/NO-GO, shelter call, minutes-to-abort, last 48 h, DONKI events |
 | GET | `/api/validation` | MSL/RAD comparison table and caveats |
 
-Missing data returns HTTP 503 with the fix ("run fetch_data.py"). Bad input returns 400. The server never crashes on a request.
+Missing data returns HTTP 503 with what to do next. Bad input returns 400. The server never crashes on a request.
+
+**Where the data comes from at run time:** bundled copy (`data/bundled/`, if committed) → local cache → download from NASA/NOAA on first use, then cached. On Vercel the cache lives in `/tmp`, so each new server instance downloads a storm's year file (about 3 MB from NASA SPDF) once.
 
 **UI screens:** Replay a storm (flux chart with DONKI markers, crew-location strips, time scrubber, "what SHELTER knew at this hour" panel, outcome cards, decision log) · Live now · Check against Mars cruise · Method and sources.
 
@@ -254,6 +261,15 @@ python scripts/run_backtest.py
 ```
 
 If a storm shows "not downloaded yet", rerun step 2. The SYNTHETIC storm always works offline. It is only for checking the software and carries a red banner: never present its numbers.
+
+### Deploy on Vercel
+
+1. Push the repository to GitHub and import it at vercel.com → **Add New… → Project**. Leave every build setting at its default: `vercel.json` sets the framework to "Other", serves `public/` as the site and routes `/api/*` to the Python function in `api/index.py` (Python 3.12, NumPy installed from `requirements.txt`).
+2. Optional: under **Settings → Environment Variables** add `NASA_API_KEY` (free at api.nasa.gov). Without it, DONKI markers may be skipped when the shared `DEMO_KEY` is rate-limited; everything else works.
+3. Deploy. The first time each storm is opened, the server downloads it from NASA SPDF (a few seconds) and caches it.
+4. **Recommended for judging:** run `python scripts/fetch_data.py --bundle` on your laptop and commit `data/bundled/` (about 2 MB). The deployment then replays every storm without contacting NASA.
+
+Notes: preview deployments (branches other than the production branch) ask visitors to log in to Vercel unless you turn off Deployment Protection; the production URL is public. The Live tab needs NOAA SWPC to be reachable at request time.
 
 ---
 

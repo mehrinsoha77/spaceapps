@@ -4,7 +4,7 @@ Turns NASA and NOAA solar-storm data into crew schedule decisions (hold an EVA, 
 
 Built for the NASA Space Apps Challenge 2026. **Full write-up: [SOLUTION.md](SOLUTION.md).**
 
-## Quick start
+## Quick start (local)
 
 ```bash
 pip install -r requirements.txt          # only NumPy; Python 3.10+
@@ -17,6 +17,21 @@ Offline / on stage: `SHELTER_OFFLINE=1 python -m shelter.server.app` uses cached
 
 Tests: `python -m unittest discover -s tests -t .`
 Backtest every cached storm: `python scripts/run_backtest.py`
+
+## Deploy on Vercel
+
+1. Import this GitHub repository at [vercel.com/new](https://vercel.com/new). Keep the default settings: `vercel.json` already sets the framework to "Other", serves `public/` as the site and sends `/api/*` to the Python function `api/index.py` (Python 3.12 + NumPy).
+2. Optional: add the environment variable `NASA_API_KEY` (Settings → Environment Variables).
+3. Deploy and open the URL. Each storm is downloaded from NASA SPDF the first time it is opened (a few seconds), then cached.
+
+To make the deployment independent of NASA's servers (recommended before judging):
+
+```bash
+python scripts/fetch_data.py --bundle    # copies the storm data into data/bundled/ (~2 MB)
+git add data/bundled && git commit -m "Bundle storm data" && git push
+```
+
+Preview deployments ask visitors to log in to Vercel unless Deployment Protection is turned off; the production URL is public.
 
 ## Data
 
