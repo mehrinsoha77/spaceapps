@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SHELTER</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%23E8B500'/%3E%3Cpath d='M16 16 L8 4 A14 14 0 0 1 24 4Z M16 16 L30 16 A14 14 0 0 1 22 28Z M16 16 L10 28 A14 14 0 0 1 2 16Z' fill='%23A3196E'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23A3196E'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg class="trefoil" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" class="tf-bg"/><path class="tf-fg" d="M16 16 L8 4 A14 14 0 0 1 24 4Z M16 16 L30 16 A14 14 0 0 1 22 28Z M16 16 L10 28 A14 14 0 0 1 2 16Z"/><circle cx="16" cy="16" r="3" class="tf-fg"/></svg>
+    <div>
+      <h1>SHELTER</h1>
+      <p class="tagline">Turns solar-storm data into crew schedule decisions, checked against what really happened.</p>
+    </div>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="replay">Replay a storm</button>
+    <button role="tab" aria-selected="false" data-tab="live">Live now</button>
+    <button role="tab" aria-selected="false" data-tab="validation">Check against Mars cruise</button>
+    <button role="tab" aria-selected="false" data-tab="method">Method and sources</button>
+  </nav>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+
+<main>
+<!-- ============================ REPLAY ============================ -->
+<section id="tab-replay" class="tab">
+  <aside class="rail">
+    <label class="field">Storm
+      <select id="event"></select>
+    </label>
+    <p id="event-why" class="hint"></p>
+
+    <details open>
+      <summary>Crew schedule</summary>
+      <p class="hint">Hours after the replay starts. One crew member; outside activities they are in the cabin.</p>
+      <div class="sched-wrap"><table class="sched">
+        <thead><tr><th>Activity</th><th>Type</th><th>Start h</th><th>Length h</th><th>Max delay h</th><th></th></tr></thead>
+        <tbody id="sched-body"></tbody>
+      </table></div>
+      <div class="row-actions">
+        <button class="ghost" id="add-eva">Add EVA</button>
+        <button class="ghost" id="add-burn">Add burn</button>
+        <button class="ghost" id="reset-sched">Reset</button>
+      </div>
+    </details>
+
+    <details>
+      <summary>Flight-rule thresholds</summary>
+      <p class="hint">Team-chosen defaults, not NASA flight rules. Change them and run again to see the trade-off.</p>
+      <div id="policy-fields" class="policy"></div>
+    </details>
+
+    <button id="run" class="primary">Run replay</button>
+    <p class="hint">At every hour SHELTER only sees data up to that hour. The outcome is then scored with what actually happened.</p>
+  </aside>
+
+  <div class="stage">
+    <div class="chart-block">
+      <div class="chart-head">
+        <h2>Proton flux at GOES (integral, pfu)</h2>
+        <div class="legend" id="legend-flux"></div>
+      </div>
+      <canvas id="c-flux" height="260"></canvas>
+      <div class="strips" id="strips" hidden>
+        <canvas id="c-strip-base" height="18" aria-label="Crew location when following the schedule"></canvas>
+        <canvas id="c-strip-pol" height="18" aria-label="Crew location with SHELTER"></canvas>
+        <div class="strip-key"><i class="k-cabin"></i>Cabin <i class="k-shelter"></i>Storm shelter <i class="k-eva"></i>EVA</div>
+      </div>
+      <input type="range" id="scrub" min="0" max="100" value="0" aria-label="Replay time" disabled>
+    </div>
+
+    <div class="chart-block">
+      <div class="chart-head">
+        <h2>Dose to blood-forming organs, if the crew member stayed in one place (mSv/h)</h2>
+        <div class="legend" id="legend-rate"></div>
+      </div>
+      <canvas id="c-rate" height="180"></canvas>
+    </div>
+
+    <div id="results" hidden>
+      <div class="split">
+        <div class="moment" id="moment"></div>
+        <div class="chart-block">
+          <div class="chart-head">
+            <h2>Accumulated storm dose, blood-forming organs (mSv)</h2>
+            <div class="legend" id="legend-cum"></div>
+          </div>
+          <canvas id="c-cum" height="200"></canvas>
+        </div>
+      </div>
+      <div class="outcome" id="outcome"></div>
+      <div class="log-wrap">
+        <h2>Decision log</h2>
+        <ol class="log" id="log"></ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ LIVE ============================ -->
+<section id="tab-live" class="tab" hidden>
+  <div class="live-head">
+    <div>
+      <h2>Current conditions</h2>
+      <p class="hint" id="live-meta">Loading the latest GOES proton data from NOAA SWPC.</p>
+    </div>
+    <label class="field inline">Planned EVA length (h)
+      <input id="live-eva" type="number" min="0.5" max="12" step="0.5" value="6">
+    </label>
+    <button class="ghost" id="live-refresh">Refresh</button>
+  </div>
+  <div class="advice" id="advice"></div>
+  <div class="chart-block">
+    <div class="chart-head"><h2>Last 48 hours, proton flux (pfu)</h2><div class="legend" id="legend-live"></div></div>
+    <canvas id="c-live" height="240"></canvas>
+  </div>
+  <div class="markers-list" id="live-markers"></div>
+</section>
+
+<!-- ============================ VALIDATION ============================ -->
+<section id="tab-validation" class="tab" hidden>
+  <div class="val-intro">
+    <h2>Does the dose engine match a real spacecraft?</h2>
+    <p>NASA's Curiosity rover measured radiation inside its spacecraft on the way to Mars (MSL/RAD).
+       Three storms hit during that cruise. SHELTER estimates the same doses from GOES data at Earth
+       and the published shielding around the detector, then compares.</p>
+  </div>
+  <div class="split">
+    <div class="chart-block"><div class="chart-head"><h2>Predicted vs measured (mSv)</h2></div><canvas id="c-val" height="300"></canvas></div>
+    <div id="val-table"></div>
+  </div>
+  <div id="val-notes" class="notes"></div>
+</section>
+
+<!-- ============================ METHOD ============================ -->
+<section id="tab-method" class="tab" hidden>
+  <div id="method"></div>
+</section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
