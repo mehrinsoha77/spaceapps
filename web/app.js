@@ -268,7 +268,7 @@ function renderMoment() {
   const raw10 = ev.channels["10"][k];
   let k3 = k; while (k3 > 0 && ev.hours[k3] > h - 3) k3--;
   const a = ev.sep10[k3], bnow = ev.sep10[k];
-  const trend = a > 0 && bnow > 0 ? bnow / a : null;
+  const trend = bnow > 0 ? bnow / Math.max(a || 0, 0.1) : null;   // same 0.1 pfu floor as the engine
   const last = [...r.log].reverse().find((e) => e.t_h <= h + 1e-6);
   const cumB = r.bounds.hard.cum_baseline.bfo[k], cumP = r.bounds.hard.cum_policy.bfo[k];
   const lvl = raw10 != null ? sLevel(raw10) : "–";
@@ -277,7 +277,8 @@ function renderMoment() {
     <div><div class="clock">${utc(ev.times[k])}</div><div class="sub">T+${h.toFixed(0)} h into the replay</div></div>
     <div class="knew">SHELTER sees data up to this hour only.<br>
       ≥10 MeV: <b>${pfu(raw10)} pfu</b> <span class="slevel ${lvl !== "S0" ? "hot" : ""}">${lvl}</span>
-      ${trend ? `<br>${trend > 1.05 ? "Rising" : trend < 0.95 ? "Falling" : "Steady"}: ×${trend.toFixed(2)} over 3 h` : ""}</div>
+      ${!trend ? "" : !(a > 0) ? "<br>Rising from quiet (no storm protons 3 h ago)" :
+        `<br>${trend > 1.05 ? "Rising" : trend < 0.95 ? "Falling" : "Steady"}: ×${trend.toFixed(2)} over 3 h`}</div>
     <dl>
       <dt>Crew, schedule</dt><dd>${place[r.place_baseline[k]] || "–"}</dd>
       <dt>Crew, SHELTER</dt><dd>${place[r.place_policy[k]] || "–"}</dd>
@@ -347,7 +348,7 @@ async function loadLive() {
   else banner(null);
   const nc = L.advice.nowcast;
   $("#live-meta").innerHTML = `Latest sample ${utc(L.latest_utc)} · ${esc(L.source)} · ≥10 MeV ${pfu(nc.j10_raw)} pfu (${nc.s_level})${nc.rising ? ", rising" : ""}.`;
-  const cls = { GO: "", STAY: "", OK: "", PREPARE: "warn", "NO-GO": "bad", SHELTER: "bad", TERMINATE: "bad" };
+  const cls = { GO: "", STAY: "", OK: "", PREPARE: "warn", "NO DATA": "warn", "NO-GO": "bad", SHELTER: "bad", TERMINATE: "bad" };
   const title = { EVA: "Start a planned EVA now?", SHELTER: "Crew in the cabin", EVA_IN_PROGRESS: "If an EVA is already under way" };
   $("#advice").innerHTML = L.advice.items.map((it) => `<div class="adv ${cls[it.verdict] || ""}"><h3>${title[it.kind]}</h3><div class="verdict">${it.verdict}</div><p>${esc(it.text)}</p></div>`).join("");
   const hrs = L.hours, chans = ["10", "50", "100"].filter((c) => L.channels[c]);

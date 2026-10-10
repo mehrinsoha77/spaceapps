@@ -141,7 +141,7 @@ def api_live(q, _b):
             _LIVE_CACHE.update(t=now, value=(series, meta, p, markers, mstatus))
         series, meta, p, markers, mstatus = _LIVE_CACHE["value"]
     i = len(p.hours) - 1
-    while i > 0 and np.isnan(series.flux[i]).all():
+    while i > 0 and p.missing[i]:          # advise from the latest sample that has dose data
         i -= 1
     adv = engine.advise(p, i, _policy_from(json.loads(q.get("policy", ["{}"])[0])), eva_duration_h=eva_h)
     i0 = p.t0_index
@@ -209,7 +209,7 @@ class Handler(BaseHTTPRequestHandler):
     def _static(self, path):
         rel = "index.html" if path in ("", "/") else path.lstrip("/")
         target = (config.WEB_DIR / rel).resolve()
-        if not str(target).startswith(str(config.WEB_DIR.resolve())) or not target.is_file():
+        if not target.is_relative_to(config.WEB_DIR.resolve()) or not target.is_file():
             return self._send(404, {"error": "not found"})
         ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
         return self._send(200, target.read_bytes(), ctype)
