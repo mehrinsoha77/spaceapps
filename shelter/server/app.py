@@ -23,6 +23,7 @@ from .. import config
 from ..data import donki, events, swpc
 from ..data.http import DataUnavailable
 from ..data.omni import OmniFormatError
+from ..health import demo as health_demo, monitor as health
 from ..physics import dose as dose_mod
 from ..physics.limits import GCR_CRUISE_MSV_PER_DAY, GCR_SOURCE, NOAA_S_SCALE, REFERENCE_LIMITS
 from ..planner import engine
@@ -154,8 +155,13 @@ def api_replay(_q, body):
     series, markers, status, p = _prepared(eid)
     policy = _policy_from(body.get("policy"))
     sched = _schedule_from(body.get("schedule"))
+    crew = None
+    if body.get("health") is not None:                 # tighten the rules with this crew member's state
+        crew = health.assess(body["health"], body.get("health_day"))["flight_rules"]
+        health.apply_to_policy(policy, crew)
     res = engine.backtest(p, sched, policy)
     res["policy_used"] = asdict(policy)
+    res["crew_rules"] = crew
     res["synthetic"] = series.synthetic
     return res
 
@@ -193,12 +199,32 @@ def api_validation(_q, _b):
     return rad.run_benchmark()
 
 
+def api_health(_q, body):
+    day = body.get("as_of_day")
+    return health.assess(body.get("log") if "log" in body else body,
+                         None if day is None else health._num(day, "as_of_day", 0, 5000))
+
+
+def api_health_demo(_q, _b):
+    return health_demo.demo_log()
+
+
+def api_health_meta(_q, _b):
+    return {"symptoms": health.SYMPTOMS, "sources": health.SOURCES,
+            "pvt": {"lapse_ms": health.m.PVTB_LAPSE_MS, "false_start_ms": health.m.FALSE_START_MS,
+                    "isi_s": [2, 5], "duration_s": 180},
+            "limits_30d_msv": health.m.LIMITS_30D_MSV, "co2_limit_mmhg": health.m.NASA_STD_CO2_MMHG}
+
+
 ROUTES = {
     ("GET", "/api/meta"): api_meta,
     ("GET", "/api/event"): api_event,
     ("POST", "/api/replay"): api_replay,
     ("GET", "/api/live"): api_live,
     ("GET", "/api/validation"): api_validation,
+    ("POST", "/api/health"): api_health,
+    ("GET", "/api/health/demo"): api_health_demo,
+    ("GET", "/api/health/meta"): api_health_meta,
 }
 
 JSON = "application/json"

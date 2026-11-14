@@ -13,11 +13,12 @@
     <svg class="trefoil" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" class="tf-bg"/><path class="tf-fg" d="M16 16 L8 4 A14 14 0 0 1 24 4Z M16 16 L30 16 A14 14 0 0 1 22 28Z M16 16 L10 28 A14 14 0 0 1 2 16Z"/><circle cx="16" cy="16" r="3" class="tf-fg"/></svg>
     <div>
       <h1>SHELTER</h1>
-      <p class="tagline">Turns solar-storm data into crew schedule decisions, checked against what really happened.</p>
+      <p class="tagline">Crew health monitoring for long missions: radiation, isolation, altered gravity and cabin air, with clear actions for the astronaut.</p>
     </div>
   </div>
   <nav class="tabs" role="tablist">
-    <button role="tab" aria-selected="true" data-tab="replay">Replay a storm</button>
+    <button role="tab" aria-selected="true" data-tab="health">Crew health</button>
+    <button role="tab" aria-selected="false" data-tab="replay">Replay a storm</button>
     <button role="tab" aria-selected="false" data-tab="live">Live now</button>
     <button role="tab" aria-selected="false" data-tab="validation">Check against Mars cruise</button>
     <button role="tab" aria-selected="false" data-tab="method">Method and sources</button>
@@ -28,7 +29,97 @@
 
 <main>
 <!-- ============================ REPLAY ============================ -->
-<section id="tab-replay" class="tab">
+<!-- ============================ CREW HEALTH ============================ -->
+<section id="tab-health" class="tab">
+  <aside class="rail">
+    <div class="h-who"><p class="h-name" id="h-name">Crew member</p><p class="hint" id="h-src"></p></div>
+    <div class="row-actions">
+      <button class="ghost" id="h-demo">Load demo astronaut</button>
+      <button class="ghost" id="h-new">Start my own log</button>
+    </div>
+    <details open id="h-checkin-box">
+      <summary>Today’s check-in</summary>
+      <p class="hint">What you gather yourself. Everything stays in this browser; the server stores nothing.</p>
+      <div class="policy">
+        <label for="hc-day">Mission day</label><input id="hc-day" type="number" min="0" max="5000" step="1">
+        <label for="hc-sleep">Sleep last night (h)</label><input id="hc-sleep" type="number" min="0" max="24" step="0.25">
+        <label for="hc-wake">Woke up at (clock hour, 0–24)</label><input id="hc-wake" type="number" min="0" max="24" step="0.25">
+        <label for="hc-mood">Mood (0 low – 10 great)</label><input id="hc-mood" type="number" min="0" max="10" step="1">
+        <label for="hc-stress">Stress (0 none – 10 extreme)</label><input id="hc-stress" type="number" min="0" max="10" step="1">
+        <label for="hc-res">Resistive exercise today (min)</label><input id="hc-res" type="number" min="0" max="600" step="5">
+        <label for="hc-co2">Cabin CO₂ reading (mmHg)</label><input id="hc-co2" type="number" min="0" max="50" step="0.1">
+        <label for="hc-hr">Resting heart rate (bpm)</label><input id="hc-hr" type="number" min="20" max="250" step="1">
+      </div>
+      <div class="row-actions">
+        <button class="ghost" id="hc-tap">Measure pulse by tapping (15 s)</button>
+      </div>
+      <label class="field">Heart-beat (RR) intervals in ms from any wearable, optional
+        <textarea id="hc-rr" rows="2" placeholder="812, 798, 805, …"></textarea>
+      </label>
+      <fieldset class="symptoms" id="hc-sym"><legend>Symptoms today</legend></fieldset>
+      <div class="row-actions">
+        <button class="ghost" id="hc-pvt">Reaction test, 3 min (PVT-B)</button>
+        <button class="ghost" id="hc-pvt-short">Quick 60 s demo test</button>
+      </div>
+      <p class="hint" id="hc-pvt-done"></p>
+      <button class="primary" id="hc-save">Save check-in</button>
+    </details>
+    <details>
+      <summary>Profile and data</summary>
+      <div class="policy">
+        <label for="hp-name">Name</label><input id="hp-name" type="text" maxlength="60">
+        <label for="hp-g">Gravity (g): 0 orbit / deep space, 0.17 Moon, 0.38 Mars</label><input id="hp-g" type="number" min="0" max="1.5" step="0.01">
+        <label for="hp-gcr">Cosmic-ray dose (mSv/day)</label><input id="hp-gcr" type="number" min="0" max="10" step="0.05">
+        <label for="hp-career">Career dose before this mission (mSv)</label><input id="hp-career" type="number" min="0" max="5000" step="1">
+        <label for="hp-res">Prescribed resistive exercise (min/day)</label><input id="hp-res" type="number" min="1" max="600" step="5">
+        <label for="hp-days">Planned mission length (days)</label><input id="hp-days" type="number" min="1" max="2000" step="1">
+      </div>
+      <div class="row-actions">
+        <button class="ghost" id="hp-save">Save profile</button>
+        <button class="ghost" id="hp-export">Export log (JSON)</button>
+        <label class="ghost filebtn">Import log<input id="hp-import" type="file" accept="application/json" hidden></label>
+      </div>
+    </details>
+  </aside>
+
+  <div class="stage">
+    <div class="h-dayrow">
+      <h2>Health status, mission day <span id="h-day"></span></h2>
+      <input type="range" id="h-scrub" min="0" max="0" value="0" aria-label="Mission day shown">
+      <p class="hint">Drag to see what the monitor knew on any earlier day (it never uses later entries).</p>
+    </div>
+    <div class="h-stressors" id="h-stressors"></div>
+    <div class="h-systems" id="h-systems"></div>
+    <div class="log-wrap"><h2>What to do now</h2><ol class="h-actions" id="h-actions"></ol></div>
+    <div class="h-rules" id="h-rules"></div>
+    <div class="h-trends">
+      <div class="chart-block"><div class="chart-head"><h2>Reaction-test lapses (≥355 ms)</h2></div><canvas id="hc-c-pvt" height="150"></canvas></div>
+      <div class="chart-block"><div class="chart-head"><h2>Sleep pressure index (1 = rested)</h2></div><canvas id="hc-c-sleep" height="150"></canvas></div>
+      <div class="chart-block"><div class="chart-head"><h2>Resting heart rate (bpm) and HRV (ms)</h2><div class="legend" id="hc-l-heart"></div></div><canvas id="hc-c-heart" height="150"></canvas></div>
+      <div class="chart-block"><div class="chart-head"><h2>Cabin CO₂ (mmHg)</h2></div><canvas id="hc-c-co2" height="150"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<div id="pvt" class="pvt" hidden>
+  <div class="pvt-box" id="pvt-box" tabindex="0" role="button" aria-label="Reaction test: press space or tap when the counter appears">
+    <p class="pvt-count" id="pvt-count">Ready</p>
+    <p class="pvt-help" id="pvt-help">Press SPACE or tap this box as soon as the counter starts. Don’t press before it appears.</p>
+  </div>
+  <p class="pvt-meta" id="pvt-meta"></p>
+  <button class="ghost" id="pvt-stop">Stop test</button>
+</div>
+
+<div id="tap" class="pvt" hidden>
+  <div class="pvt-box" id="tap-box" tabindex="0" role="button" aria-label="Tap with each heartbeat">
+    <p class="pvt-count" id="tap-count">Tap with each beat</p>
+    <p class="pvt-help">Feel your pulse at the wrist or neck and tap (or press SPACE) on every beat for 15 seconds. Heart rate only: tapping is not precise enough for HRV.</p>
+  </div>
+  <button class="ghost" id="tap-stop">Cancel</button>
+</div>
+
+<!-- ============================ REPLAY ============================ -->
+<section id="tab-replay" class="tab" hidden>
   <aside class="rail">
     <label class="field">Storm
       <select id="event"></select>
@@ -55,6 +146,7 @@
       <div id="policy-fields" class="policy"></div>
     </details>
 
+    <label class="check"><input type="checkbox" id="use-crew"> Apply the crew health state (Crew health tab, current day)</label>
     <button id="run" class="primary">Run replay</button>
     <p class="hint">At every hour SHELTER only sees data up to that hour. The outcome is then scored with what actually happened.</p>
   </aside>
@@ -144,5 +236,6 @@
 </main>
 
 <script src="app.js"></script>
+<script src="health.js"></script>
 </body>
 </html>

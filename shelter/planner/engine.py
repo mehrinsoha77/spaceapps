@@ -48,6 +48,8 @@ class Policy:
     eva_abort_skin_msv: float = 10.0
     # scoring
     false_alarm_msv: float = 0.1          # an action that saved less than this was unnecessary
+    # crew health (set from the crew health monitor, see shelter.health.monitor)
+    crew_eva_hold: bool = False           # crew member not fit to start an EVA
     steepening_for_decisions: float = 0.0 # 0 = conservative upper-bound spectrum
 
 
@@ -212,7 +214,7 @@ def run(p, schedule, policy=None, apply_policy=True):
             block = apply_policy and (proj_bfo >= policy.eva_start_bfo_msv
                                       or proj_skin >= policy.eva_start_skin_msv
                                       or (policy.eva_block_if_s1_rising and s1_rising)
-                                      or sheltered or no_data)
+                                      or sheltered or no_data or policy.crew_eva_hold)
             if block:
                 if a["delay_h"] + dt > a["max_delay_h"]:
                     a.update(state="cancelled", outcome="cancelled")
@@ -231,6 +233,8 @@ def run(p, schedule, policy=None, apply_policy=True):
                             why.append("crew is in storm shelter")
                         if no_data:
                             why.append("no proton data at this hour")
+                        if policy.crew_eva_hold:
+                            why.append("crew health check: not fit to start an EVA")
                         note(i, "EVA_DEFER", f"{a['id']}: " + "; ".join(why), {"activity": a["id"],
                              "proj_bfo_msv": round(proj_bfo, 3), "proj_skin_msv": round(proj_skin, 2)})
                     a["delay_h"] += dt

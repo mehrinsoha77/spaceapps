@@ -26,6 +26,23 @@ Stack: Python 3.10+ and NumPy only. No framework, no database, no internet neede
 
 ---
 
+## A2. Challenge fit: crew health monitoring
+
+The 2026 challenge asks for software that **gathers health indicators** and lets **astronauts evaluate and act on their own health**, across space radiation, isolation and confinement, altered gravity and a closed environment, and immune, bone, cardiovascular and behavioral outcomes. SHELTER’s **Crew health** tab does that:
+
+| Stressor → system | What the astronaut gathers | Indicator (source) | Action shown |
+|---|---|---|---|
+| Space radiation → immune, all organs | storm doses from Replay; cosmic-ray rate | 30-day / annual / career dose vs NCRP-132 and NASA-STD-3001; single exposure vs 0.7 Gy ARS threshold (CDC) | shelter earlier, report to flight surgeon |
+| Altered gravity → bone | resistive exercise minutes | adherence to prescription; 1.06–1.56 %/month loss if lapsed (LeBlanc 2000) | restore prescribed sessions |
+| Closed environment → cardiovascular / headache | cabin CO₂ readings, headaches | 7-day mean vs 2.5 mmHg guidance and 3 mmHg standard; odds ×2 per mmHg (Law 2014) | report, check CO₂ removal |
+| Altered gravity → cardiovascular | resting HR, RR intervals | HR and HRV (RMSSD, SDNN) vs the astronaut’s own baseline (Task Force 1996) | re-measure, hydration, report |
+| Isolation and confinement → behavioral | 3-min PVT-B in the browser; sleep, wake time, mood, stress | lapses ≥ 355 ms (Basner 2011); two-process sleep pressure (Daan et al. 1984); self-ratings vs baseline | no critical tasks until re-test; protect sleep; psychological support |
+| All → immune | symptom check-list | fever, infection, rash, cold sore (Crucian 2016, 2018) | flight-surgeon checklist |
+
+The health state feeds back into SHELTER’s storm rules: a smaller remaining dose budget lowers the shelter trigger and EVA limit, and a failed reaction test or high sleep pressure holds EVA starts. Like the storm replay, the assessment for day D uses only entries up to day D (unit-tested). Statuses are decision support, not a diagnosis; personal-baseline limits (|z| ≥ 2 / 3) and dose-budget levels are team choices.
+
+---
+
 ## B. The problem
 
 Outside Earth's magnetic field, a large solar particle event (SEP) can deliver a crew's normal *month* of radiation in hours. The danger depends on **where each astronaut is** when the protons arrive:
@@ -218,7 +235,8 @@ shelter/
 ├── data/bundled/              optional committed copy of the storm data (fetch_data.py --bundle)
 ├── scripts/fetch_data.py      download + check everything (run while online); --bundle for deployment
 ├── scripts/run_backtest.py    backtest all cached storms → data/backtest_results.csv
-└── tests/                     56 unittest tests (physics, data, planner, servers, deployment, downloads)
+├── shelter/health/           crew health monitor: indicator models, assessment, synthetic demo astronaut
+└── tests/                     100 unittest tests, 94% line coverage (physics, data, planner, health, servers, deployment)
 ```
 
 **API**
@@ -230,6 +248,9 @@ shelter/
 | POST | `/api/replay` | `{event_id, schedule, policy}` → backtest: doses, EVA outcomes, false alarms, decision log, crew-location timelines |
 | GET | `/api/live?eva_h=6` | Latest GOES status, EVA GO/NO-GO, shelter call, minutes-to-abort, last 48 h, DONKI events |
 | GET | `/api/validation` | MSL/RAD comparison table and caveats |
+| POST | `/api/health` | `{log, as_of_day}` → stressors, four health systems, actions with sources, trends, flight-rule adjustments |
+| GET | `/api/health/demo` | Synthetic 40-day demo astronaut log (labelled) |
+| GET | `/api/health/meta` | Symptom list, PVT-B settings, limits, sources |
 
 Missing data returns HTTP 503 with what to do next. Bad input returns 400. The server never crashes on a request.
 

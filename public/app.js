@@ -147,11 +147,12 @@ document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("cli
   document.querySelectorAll(".tabs button").forEach((x) => x.setAttribute("aria-selected", x === b));
   document.querySelectorAll(".tab").forEach((t) => t.hidden = t.id !== `tab-${b.dataset.tab}`);
   const tab = b.dataset.tab;
-  if (tab === "replay") { banner(state.ev && state.ev.synthetic ? "synthetic" : null, "SYNTHETIC TEST DATA – not a real storm. Do not present these numbers as results."); redrawReplay(); }
+  if (tab === "replay") { banner(...(state.rb || [null])); redrawReplay(); }
   else banner(null);
   if (tab === "live") loadLive();
   if (tab === "validation") loadValidation();
   if (tab === "method") renderMethod();
+  if (tab === "health" && window.healthTab) window.healthTab();
 }));
 
 /* ------------------------------------------------------------ replay */
@@ -198,6 +199,10 @@ $("#reset-sched").onclick = resetSchedule;
 function eventLabel(e) {
   return e.title + (e.cached ? "" : e.loadable ? " – loads from NASA on first use" : " – not downloaded yet");
 }
+function rbanner(kind, text) {            // remembered, and shown only while the Replay tab is open
+  state.rb = kind ? [kind, text] : null;
+  if (!$("#tab-replay").hidden) banner(kind, text);
+}
 async function loadEvent(id) {
   state.res = null; $("#results").hidden = true; $("#strips").hidden = true; $("#scrub").disabled = true;
   const ev = state.meta.events.find((e) => e.id === id);
@@ -205,15 +210,15 @@ async function loadEvent(id) {
   const req = (state.loading = id);
   $("#run").disabled = true;
   try {
-    banner(ev && !ev.cached ? "info" : null, `Loading ${ev ? ev.title : id}: downloading NASA OMNI2 proton data (first load takes a few seconds)…`);
+    rbanner(ev && !ev.cached ? "info" : null, `Loading ${ev ? ev.title : id}: downloading NASA OMNI2 proton data (first load takes a few seconds)…`);
     const got = await api(`/api/event?id=${encodeURIComponent(id)}`);
     if (state.loading !== req) return;            // the user picked another storm meanwhile
     state.ev = got;
-    banner(null);
+    rbanner(null);
   } catch (e) {
     if (state.loading !== req) return;
     state.ev = null;
-    banner("error", `${e.message}${e.hint ? " — " + e.hint : ""}`);
+    rbanner("error", `${e.message}${e.hint ? " — " + e.hint : ""}`);
     ["#c-flux", "#c-rate"].forEach((s) => { const { g, w, h } = setupCanvas($(s)); g.clearRect(0, 0, w, h); });
     return;
   } finally {
@@ -223,8 +228,8 @@ async function loadEvent(id) {
     ev.cached = true;
     const opt = [...$("#event").options].find((o) => o.value === id); if (opt) opt.textContent = eventLabel(ev);
   }
-  if (state.ev.synthetic) banner("synthetic", "SYNTHETIC TEST DATA – not a real storm. Do not present these numbers as results.");
-  else if (state.ev.notes?.length) banner("stale", state.ev.notes.join(" "));
+  if (state.ev.synthetic) rbanner("synthetic", "SYNTHETIC TEST DATA – not a real storm. Do not present these numbers as results.");
+  else if (state.ev.notes?.length) rbanner("stale", state.ev.notes.join(" "));
   $("#scrub").max = state.ev.times.length - 1; state.k = 0; $("#scrub").value = 0;
   resetSchedule(); redrawReplay();
 }
@@ -255,12 +260,13 @@ $("#run").onclick = async () => {
   const btn = $("#run"); btn.disabled = true; btn.textContent = "Running…";
   try {
     state.res = await api("/api/replay", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ event_id: state.ev.id, schedule: readSchedule(), policy: readPolicy() }) });
+      body: JSON.stringify(Object.assign({ event_id: state.ev.id, schedule: readSchedule(), policy: readPolicy() },
+        $("#use-crew").checked && window.crewForReplay ? window.crewForReplay() : {})) });
     $("#results").hidden = false; $("#strips").hidden = false; $("#scrub").disabled = false;
     const firstAct = state.res.first_action;
     state.k = firstAct ? Math.max(0, state.ev.hours.findIndex((h) => h >= firstAct.t_h)) : 0;
     $("#scrub").value = state.k;
-    redrawReplay(); renderOutcome(); renderLog();
+    redrawReplay(); renderOutcome(); renderCrewRules(); renderLog();
   } catch (e) { banner("error", e.message); }
   finally { btn.disabled = false; btn.textContent = "Run replay"; }
 };
@@ -334,6 +340,13 @@ function renderOutcome() {
       <tbody>${evas.map((e) => `<tr><td>${esc(e.id)}</td><td>T+${e.planned_start_h} h</td><td>${esc(e.baseline_outcome)}</td><td>${esc(e.policy_outcome)}</td><td class="num">${fmt(e.delay_h, 0)}</td></tr>`).join("") || `<tr><td colspan="5">No EVAs in the schedule.</td></tr>`}</tbody></table></div>`;
 }
 
+function renderCrewRules() {
+  const cr = state.res && state.res.crew_rules;
+  const old = $("#crew-rules"); if (old) old.remove();
+  if (!cr) return;
+  $("#outcome").insertAdjacentHTML("afterbegin", `<div class="out-card crew-card" id="crew-rules" style="grid-column:1/-1"><h3>Crew health state applied</h3>
+    <ul>${cr.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul></div>`);
+}
 function renderLog() {
   const ol = $("#log");
   ol.innerHTML = state.res.log.map((e, n) => `<li data-n="${n}" tabindex="0"><span>T+${e.t_h.toFixed(0)} h</span><span class="act ${e.action}">${esc(e.action.replace(/_/g, " ").toLowerCase())}</span><span class="why">${esc(e.reason)}</span></li>`).join("")
@@ -450,6 +463,19 @@ function renderMethod() {
   <table class="plain"><thead><tr><th>Limit</th><th class="num">Value</th><th>Applies to</th><th>Source</th></tr></thead><tbody>${lim}</tbody></table>
   <h2>Decision rules</h2>
   <p>Every hour SHELTER projects the next hours two ways: still rising (current growth rate, capped at ${M.policy_defaults.growth_cap}×) and decaying (e-fold ${M.policy_defaults.decay_h} h). Decisions use the rising case. Thresholds are team-chosen defaults, editable in Replay, not NASA flight rules.</p>
+  <h2>Crew health monitor</h2>
+  <p>The Crew health tab gathers what an astronaut can measure without a lab: a daily check-in, a reaction-time test and a pulse count in the browser, heart-beat intervals from any wearable, and cabin CO₂ readings. It covers the challenge’s four stressors and four health systems and turns them into “OK / Watch / Act now” with the reason and a source. It is decision support, not a diagnosis.</p>
+  <table class="plain"><thead><tr><th>Indicator</th><th>How it is computed</th><th>Source</th></tr></thead><tbody>
+    <tr><td>Radiation dose budget</td><td>Cosmic rays (MSL/RAD ${M.gcr.msv_per_day} mSv/day) plus storm doses from Replay, against 30-day and annual limits (blood-forming organs 250 / 500 mSv, eye 1,000 / 2,000, skin 1,500 / 3,000) and the 600 mSv career limit</td><td>NCRP Report 132; NASA-STD-3001</td></tr>
+    <tr><td>Acute radiation</td><td>Largest single exposure against the 0.7 Gy acute radiation syndrome threshold (using dose equivalent, a conservative upper bound)</td><td>CDC</td></tr>
+    <tr><td>Bone</td><td>Resistive-exercise adherence over 7 check-ins; what is at stake if it lapses: 1.06–1.56 % bone loss per month</td><td>LeBlanc et al. 2000</td></tr>
+    <tr><td>Cabin CO₂</td><td>7-day average and peak against 2.5 mmHg (headache guidance) and 3 mmHg (standard); headache odds ×2 per +1 mmHg</td><td>NASA-STD-3001 Vol. 2 [V2 6004]; NASA OCHMO; Law et al. 2014</td></tr>
+    <tr><td>Heart</td><td>Resting heart rate; HRV (RMSSD, SDNN) from RR intervals after artefact removal</td><td>Task Force ESC/NASPE 1996</td></tr>
+    <tr><td>Alertness</td><td>3-minute Psychomotor Vigilance Test (PVT-B): lapses ≥ 355 ms, false starts &lt; 100 ms, response speed</td><td>Basner, Mollicone &amp; Dinges 2011</td></tr>
+    <tr><td>Sleep pressure</td><td>Two-process model, Process S (rise 18.2 h, decay 4.2 h); index 1.0 = rested after 8 h nights; wake-time spread as a circadian-disruption proxy</td><td>Daan, Beersma &amp; Borbély 1984</td></tr>
+    <tr><td>Mood, stress, symptoms</td><td>Self-ratings against the astronaut’s own baseline; fever, infection, rash and cold-sore reports</td><td>Crucian et al. 2016, 2018</td></tr>
+  </tbody></table>
+  <p class="hint">Personal-baseline alerts (|z| ≥ 2 watch, ≥ 3 act), the 50 % / 80 % dose-budget levels, exercise-adherence levels and how the crew state tightens storm rules are team choices, not NASA criteria. Not modelled: blood counts, bone scans, blood pressure, Process C (no circadian-phase data). The 60-second reaction test is a demo, not the validated 3-minute PVT-B.</p>
   <h2>What it does not model</h2>
   <ul>
     <li>Secondary neutrons and nuclear fragments created in the shielding.</li>

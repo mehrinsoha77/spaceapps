@@ -1,8 +1,21 @@
 # SHELTER
 
-Turns NASA and NOAA solar-storm data into crew schedule decisions (hold an EVA, end it, move to the storm shelter) and tests those decisions by replaying real historical storms hour by hour, never looking ahead.
+**Crew health monitoring for long missions.** Astronauts gather their own health indicators (a daily check-in, a 3-minute reaction-time test and a pulse count in the browser, heart-beat intervals from any wearable, cabin CO₂ readings) and SHELTER turns them into a clear status and actions across the four spaceflight stressors (space radiation, isolation and confinement, altered gravity, closed environment) and four health systems (immune, bone, cardiovascular, behavioral). Its radiation side reads NASA and NOAA solar-storm data, computes the dose in the suit, cabin and storm shelter, and decides when to hold an EVA, end it or shelter, adjusted to the astronaut’s own dose budget and alertness. Every decision is tested by replaying real storms hour by hour, never looking ahead.
 
-Built for the NASA Space Apps Challenge 2026. **Full write-up: [SOLUTION.md](SOLUTION.md).**
+Built for the NASA Space Apps Challenge 2026, challenge “Create Health Monitoring Software for Astronauts on Space Missions”. **Full write-up: [SOLUTION.md](SOLUTION.md).**
+
+> **AI use.** Parts of this project’s code, tests and documentation were generated with an AI assistant (Claude, Anthropic) and reviewed by the team.
+
+## Crew health tab
+
+Open the app: the **Crew health** tab shows a synthetic demo astronaut (red banner) so every indicator is visible. Drag the day slider to see what the monitor knew on any day. Then press **Start my own log** and:
+
+1. Fill in today’s check-in (sleep, wake time, mood, stress, exercise, CO₂, resting heart rate; paste RR intervals from a wearable for HRV).
+2. Take the **3-minute reaction test (PVT-B)** or the 60-second demo version; tap along with your pulse for 15 s if you have no heart-rate reading.
+3. Save. After 5 check-ins (4 reaction tests) the monitor has your personal baseline and flags changes.
+4. On **Replay a storm**, tick “Apply the crew health state” to see SHELTER shelter earlier and hold EVAs for a tired or dose-limited crew member.
+
+The log stays in your browser (export/import as JSON); the server computes and stores nothing. Indicators, thresholds and sources: Method and sources tab, and `shelter/health/models.py`.
 
 ## Quick start (local)
 
