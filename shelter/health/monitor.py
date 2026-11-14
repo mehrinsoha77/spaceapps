@@ -271,8 +271,8 @@ def assess(raw_or_log, as_of_day=None):
         "bone": {"status": bone["status"], "indicators": [
             {"name": "Resistive exercise, last 7 check-ins",
              "value": "no data" if bone["adherence_7d"] is None else f"{bone['adherence_7d'] * 100:.0f} % of prescription"},
-            {"name": "Hip loss if unprotected so far",
-             "value": f"{bone['projected_unprotected_pct']['trochanter']:.1f} %", "note": "LeBlanc 2000 rate"}],
+            {"name": "Hip bone loss at stake without exercise",
+             "value": f"{abs(bone['projected_unprotected_pct']['trochanter']):.1f} %", "note": "LeBlanc 2000 rate"}],
             "notes": bone["notes"]},
         "cardiovascular": {"status": cardio, "indicators": [
             {"name": "Resting heart rate", "value": _fmt(z_hr, "bpm")},
@@ -351,12 +351,14 @@ def flight_rule_overrides(ledger, cognition_status, sleep):
     rem = ledger["remaining30_bfo_msv"]
     out, reasons = {"shelter_trigger_max_msv": max(0.1, 0.05 * rem),
                     "eva_start_bfo_max_msv": max(0.05, 0.02 * rem)}, []
-    reasons.append(f"{rem:.0f} mSv of 30-day BFO budget left: shelter trigger <= "
-                   f"{out['shelter_trigger_max_msv']:.2f} mSv, EVA start limit <= {out['eva_start_bfo_max_msv']:.2f} mSv")
+    reasons.append(f"{rem:.0f} mSv of your 30-day radiation budget (blood-forming organs) is left, so during a "
+                   f"storm you are sent to the shelter once {out['shelter_trigger_max_msv']:.1f} mSv is projected in the "
+                   f"cabin (or earlier), and a spacewalk starts only if under {out['eva_start_bfo_max_msv']:.1f} mSv is projected.")
     hold = cognition_status == m.ACT or (sleep is not None and sleep["status"] == m.ACT)
     out["crew_eva_hold"] = bool(hold)
     if hold:
-        reasons.append("crew member not fit to start an EVA (reaction test or sleep pressure at 'act')")
+        reasons.append("No spacewalk starts for you until a reaction test after rest is back in your normal range "
+                       "(reaction test or sleep pressure is at “Act now”).")
     return {"overrides": out, "reasons": reasons}
 
 
