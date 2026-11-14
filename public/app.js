@@ -7,8 +7,8 @@ const C = {
   hazard: css("--hazard"), caution: css("--caution"), shield: css("--shield"), cabin: css("--cabin"),
   ink: css("--ink"), muted: css("--muted"), line: css("--line"),
 };
-const CH_COLORS = { "1": "#C9B4C2", "2": "#BE9BB2", "4": "#B07FA0", "5": "#B07FA0", "10": C.hazard,
-  "30": "#6F2A7E", "50": "#4B3A8F", "60": "#4B3A8F", "100": "#2D4F8A", "500": "#1F2F4A" };
+const CH_COLORS = { "1": "#6E6496", "2": "#7F70AE", "4": "#937DC6", "5": "#937DC6", "10": C.hazard,
+  "30": "#B48CFF", "50": "#7FA6FF", "60": "#7FA6FF", "100": "#8FE6FF", "500": "#D7E2F5" };
 const PLACE_COLOR = { cabin: C.cabin, shelter: C.shield, eva: C.hazard };
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
@@ -244,7 +244,7 @@ function redrawReplay() {
   const ticks = dayTicks(ev.times, hrs);
   const chans = Object.keys(ev.channels).filter((c) => ["10", "30", "60", "100"].includes(c));
   const markers = (ev.markers || []).filter((m) => m.kind !== "cme" || /km/.test(m.label))
-    .map((m) => ({ x: markerX(m), label: m.label, color: m.kind === "sep" ? C.hazard : m.kind === "flare" ? "#8A6A00" : C.muted }));
+    .map((m) => ({ x: markerX(m), label: m.label, color: m.kind === "sep" ? C.hazard : m.kind === "flare" ? C.caution : C.muted }));
   chart($("#c-flux"), { x: hrs, log: true, series: chans.map((c) => ({ y: ev.channels[c], color: CH_COLORS[c], label: `≥${c} MeV` })),
     hlines: [{ y: 10, color: C.caution, label: "S1 radiation storm (10 pfu at ≥10 MeV)" }], markers, xticks: ticks, cursor, yLabel: "pfu", ml: 112 });
   legend($("#legend-flux"), chans.map((c) => ({ color: CH_COLORS[c], label: `≥${c} MeV` })));
@@ -397,7 +397,7 @@ async function loadLive() {
   $("#advice").innerHTML = L.advice.items.map((it) => `<div class="adv ${cls[it.verdict] || ""}"><h3>${title[it.kind]}</h3><div class="verdict">${it.verdict}</div><p>${esc(it.text)}</p></div>`).join("");
   const hrs = L.hours, chans = ["10", "50", "100"].filter((c) => L.channels[c]);
   const t0 = new Date(L.times[0]).getTime();
-  const markers = (L.markers || []).map((mk) => ({ x: (new Date(mk.time + "Z").getTime() - t0) / 3.6e6, label: mk.label, color: mk.kind === "sep" ? C.hazard : mk.kind === "flare" ? "#8A6A00" : C.muted }));
+  const markers = (L.markers || []).map((mk) => ({ x: (new Date(mk.time + "Z").getTime() - t0) / 3.6e6, label: mk.label, color: mk.kind === "sep" ? C.hazard : mk.kind === "flare" ? C.caution : C.muted }));
   chart($("#c-live"), { x: hrs, log: true, series: chans.map((c) => ({ y: L.channels[c], color: CH_COLORS[c] })),
     hlines: [{ y: 10, color: C.caution, label: "S1" }], markers, xticks: hourTicks(L.times, hrs, 6), yLabel: "pfu" });
   legend($("#legend-live"), chans.map((c) => ({ color: CH_COLORS[c], label: `≥${c} MeV` })));
