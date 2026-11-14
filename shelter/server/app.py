@@ -228,7 +228,7 @@ ROUTES = {
 }
 
 JSON = "application/json"
-MAX_BODY = 1 << 20        # replay requests are a few kB; refuse anything absurd
+MAX_BODY = 4 << 20        # a long crew log with heart-beat data fits; Vercel allows 4.5 MB
 
 
 def _data_hint():

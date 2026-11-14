@@ -206,6 +206,8 @@ code { background: #D6DCE3; padding: 1px 5px; border-radius: 3px; font-size: 13p
 .h-trends .chart-block { background: #fff; }
 button:disabled { opacity: .45; cursor: default; }
 button.danger { color: var(--hazard); border-color: var(--hazard); }
+.h-events { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.h-events li { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 /* dialogs */
 .dlg { border: none; border-radius: 12px; padding: 0; width: min(680px, calc(100vw - 24px)); max-height: calc(100vh - 32px); box-shadow: 0 20px 60px rgba(23,32,42,.35); }
 .dlg::backdrop { background: rgba(23, 32, 42, .55); }

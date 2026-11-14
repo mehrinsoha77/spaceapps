@@ -1,9 +1,15 @@
 """NASA SPDF OMNI2 hourly data: proton fluxes >1, >2, >4, >10, >30, >60 MeV.
 
-Format (from omni2.text, the official format description): 55 whitespace-
-separated words per hour. Word 1 = year, 2 = day of year, 3 = hour,
-words 43-48 = proton flux (1/(cm^2 s sr)) above 1, 2, 4, 10, 30, 60 MeV.
+Format (omni2.text, the official format description): 55 whitespace-separated
+words per hour in the standard files; the "extended" files (low_res_omni/extended,
+aareadme_extended) append word 56 (Lyman-alpha) and word 57 (proton quality index),
+57 words in all. Words 1-55 are identical in both, so both are accepted.
+Word 1 = year, 2 = day of year, 3 = hour, words 43-48 = proton flux
+(1/(cm^2 s sr)) above 1, 2, 4, 10, 30, 60 MeV.
 Fill values: 999999.99 (word 43) and 99999.99 (words 44-48).
+Word 49 is a flag for magnetospheric contamination of the proton fluxes; it mainly
+affects the low channels, and dose uses >= 10 MeV only (data.series.dose_channels),
+so it is not applied.
 
 Lines are fixed-width (FORTRAN format in omni2.text). A value that fills its whole
 field touches the previous one (e.g. >1 MeV >= 1e6 pfu at a storm peak), so
@@ -22,7 +28,8 @@ from .http import bundled_path, fetch_bytes
 from .series import FluxSeries
 
 OMNI_ENERGIES = [1.0, 2.0, 4.0, 10.0, 30.0, 60.0]
-N_WORDS = 55
+N_WORDS = 55                   # standard files
+N_WORDS_EXTENDED = 57          # extended files: + Lyman-alpha (F9.6) + proton QI (F7.4)
 PROTON_WORDS = slice(42, 48)   # 0-based slice of words 43..48
 # Fill values per word (omni2.text): F10.2 for >1 MeV, F9.2 for the rest.
 FILL = np.array([999999.99, 99999.99, 99999.99, 99999.99, 99999.99, 99999.99])
@@ -42,6 +49,7 @@ def _column_bounds(fmt):
 
 COLUMNS = _column_bounds(OMNI2_FORMAT)
 assert len(COLUMNS) == N_WORDS
+LINE_MAX = _column_bounds(OMNI2_FORMAT + ",F9.6,F7.4")[-1][1]     # extended line length
 
 
 class OmniFormatError(ValueError):
@@ -50,7 +58,7 @@ class OmniFormatError(ValueError):
 
 def _by_columns(line):
     """Words 1-3 and 43-48 read by fixed column, or None if the line does not fit."""
-    if len(line) > COLUMNS[-1][1]:
+    if len(line) > LINE_MAX:
         return None
     try:
         head = [int(line[a:b]) for a, b in COLUMNS[:3]]
@@ -69,11 +77,12 @@ def parse_omni2(text, year=None):
     times, rows, bad = [], [], 0
     lines = [ln.rstrip() for ln in text.splitlines() if ln.strip()]
     # Trust the column layout only if it reproduces the first well-formed line.
-    first = next((ln for ln in lines if len(ln.split()) == N_WORDS), None)
+    whole = (N_WORDS, N_WORDS_EXTENDED)
+    first = next((ln for ln in lines if len(ln.split()) in whole), None)
     columns_ok = first is not None and _by_columns(first) == _by_words(first.split())
     for ln in lines:
         parts = ln.split()
-        parsed = _by_words(parts) if len(parts) == N_WORDS else _by_columns(ln) if columns_ok else None
+        parsed = _by_words(parts) if len(parts) in whole else _by_columns(ln) if columns_ok else None
         if parsed is None:
             bad += 1
             continue
@@ -90,7 +99,7 @@ def parse_omni2(text, year=None):
         rows.append(vals)
     if not rows or bad > 0.01 * len(lines):
         raise OmniFormatError(
-            f"OMNI2 parse failed: {bad} of {len(lines)} lines could not be read as {N_WORDS} fields. "
+            f"OMNI2 parse failed: {bad} of {len(lines)} lines could not be read as {N_WORDS} or {N_WORDS_EXTENDED} fields. "
             f"Check the format at {config.OMNI2_FORMAT_URL}")
     return np.array(times, dtype="datetime64[s]"), np.vstack(rows)
 

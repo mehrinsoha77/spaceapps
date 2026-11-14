@@ -15,7 +15,7 @@ Stack: Python 3.10+ and NumPy only. No framework, no database, no internet neede
 | Dose engine matches a 2-million-point brute-force integration within 2% | **Verified** by unit test |
 | Decisions never use future data | **Verified**: changing every value after hour K leaves all decisions up to K identical, including when a data gap straddles hour K (unit tests) |
 | Missing data never reads as "quiet" | **Verified**: during a data gap SHELTER starts no EVA and never leaves the shelter (unit test) |
-| Parsers read the real OMNI2, SWPC and DONKI formats | Formats taken from the official OMNI2 format document and a live SWPC record; tested against files built in those formats, including OMNI2's fixed-width layout when a large value runs into its neighbour |
+| Parsers read the real OMNI2, SWPC and DONKI formats | OMNI2: **tested on real NASA lines** (extended 57-word files, 2000 day 1) plus files built in the standard 55-word layout, including the fixed-width case where a large value runs into its neighbour. An earlier version accepted only 55 words and would have rejected every real extended line; a regression test now guards it. SWPC and DONKI: built from the documented record formats |
 | MSL/RAD target doses (4.0, 19.5, 1.2 mSv) | Checked against Guo et al. 2015 (arXiv 1503.06631) |
 | Deploys to Vercel | Built with the Vercel CLI (`vercel build`) and the built function run through Vercel's own Python runtime: every API route answers, read-only code folder, data cached in `/tmp`. Not yet run on a live Vercel URL |
 | Real-storm results (dose saved, false alarms, RAD comparison) | **Not yet measured.** The build environment could not download NASA data. Run `python scripts/fetch_data.py` and `python scripts/run_backtest.py` on your laptop. **Quote only the numbers those scripts print.** |
@@ -221,7 +221,7 @@ shelter/
 │   │   └── limits.py          NASA-STD-3001 / NCRP reference limits, NOAA S-scale
 │   ├── data/
 │   │   ├── http.py            download + file cache + bundled copy + offline fallback (marks stale data)
-│   │   ├── omni.py            NASA SPDF OMNI2 parser (55 words or fixed columns; per-word fill values)
+│   │   ├── omni.py            NASA SPDF OMNI2 parser (standard 55-word and extended 57-word files, fixed columns; per-word fill values)
 │   │   ├── swpc.py            NOAA SWPC live GOES JSON parser
 │   │   ├── donki.py           NASA DONKI markers (api.nasa.gov → CCMC fallback → cache)
 │   │   ├── series.py          time series, gap filling, causal background, ≥10 MeV channels
@@ -236,7 +236,7 @@ shelter/
 ├── scripts/fetch_data.py      download + check everything (run while online); --bundle for deployment
 ├── scripts/run_backtest.py    backtest all cached storms → data/backtest_results.csv
 ├── shelter/health/           crew health monitor: indicator models, assessment, synthetic demo astronaut
-└── tests/                     100 unittest tests, 94% line coverage (physics, data, planner, health, servers, deployment)
+└── tests/                     101 unittest tests, 94% line coverage, incl. real NASA OMNI2 lines (physics, data, planner, health, servers, deployment)
 ```
 
 **API**

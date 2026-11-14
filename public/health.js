@@ -63,7 +63,8 @@
     const acts = r.actions.filter((a) => a.severity === "act"), watch = r.actions.filter((a) => a.severity === "watch");
     const hero = $("#h-hero");
     hero.className = `h-hero st-${acts.length ? "act" : watch.length ? "watch" : "ok"}`;
-    $("#h-hero-kicker").textContent = `${r.name} · mission day ${r.as_of_day}${past ? " (earlier day)" : ""}`;
+    $("#h-hero-kicker").textContent = own && !n ? `${r.name} · no check-ins yet`
+      : `${r.name} · mission day ${r.as_of_day}${past ? " (earlier day)" : ""}`;
     let title, sub;
     if (own && !n) { title = "Start with today’s check-in"; sub = "It takes two minutes. After 5 check-ins SHELTER knows your normal range and can spot changes."; }
     else if (acts.length) { title = `${plural(acts.length, "thing needs", "things need")} action`; sub = acts[0].text; }
@@ -143,7 +144,7 @@
      ["resistive_min", "#hc-res"], ["co2_mmhg", "#hc-co2"], ["resting_hr", "#hc-hr"]].forEach(([k, s]) => {
       const v = num(s); if (v != null && isFinite(v)) c[k] = v; });
     const rr = $("#hc-rr").value.split(/[^0-9.]+/).filter(Boolean).map(Number).filter((x) => isFinite(x));
-    if (rr.length) c.rr_ms = rr.slice(0, 3000);
+    if (rr.length) c.rr_ms = rr.slice(0, 1000);   // a 5-minute HRV recording is ~300-500 beats
     if (H.pvt) c.pvt = { rts: H.pvt.rts, false_starts: H.pvt.false_starts, duration_s: H.pvt.duration_s, protocol: H.pvt.protocol };
     H.log.checkins = H.log.checkins.filter((x) => x.day !== c.day).concat([c]).sort((a, b) => a.day - b.day);
     persist();
@@ -161,7 +162,17 @@
     $("#hp-career").value = p.prior_career_msv ?? 0; $("#hp-res").value = p.resistive_prescribed_min ?? 60; $("#hp-days").value = p.planned_days ?? "";
     $("#hc-day").value = "";
   }
-  $("#h-profile-btn").onclick = () => $("#h-profile").showModal();
+  function renderEvents() {
+    const ev = H.log.radiation_events;
+    $("#hp-events").innerHTML = ev.length ? ev.map((e, i) => `<li><span>Day ${e.day}: ${esc(e.label)} · BFO ${e.bfo} mSv, eye ${e.eye}, skin ${e.skin}</span>
+      <button class="ghost" type="button" data-i="${i}">Remove</button></li>`).join("")
+      : `<li class="hint">None yet. Add one from Replay a storm → “Add to my log”.</li>`;
+    $("#hp-events").querySelectorAll("button[data-i]").forEach((b) => b.onclick = () => {
+      H.log.radiation_events = H.log.radiation_events.filter((_, j) => j !== +b.dataset.i);
+      persist(); renderEvents(); assess();
+    });
+  }
+  $("#h-profile-btn").onclick = () => { renderEvents(); $("#h-profile").showModal(); };
   $("#h-switch").onclick = () => useMode(H.mode === "own" ? "demo" : "own");
   $("#h-demo").onclick = () => { $("#h-profile").close(); useMode("demo"); };
   $("#h-new").onclick = () => {
@@ -196,9 +207,10 @@
     const schedule = () => {
       T.onset = null; cnt.classList.remove("on");
       if (performance.now() >= T.end) return finish(false);
-      T.timer = setTimeout(() => {
+      T.timer = setTimeout(() => requestAnimationFrame(() => {
         if (T.done) return;
-        T.onset = performance.now(); cnt.classList.add("on");
+        // start timing in the frame that first draws the counter, not before it
+        cnt.textContent = "0"; cnt.classList.add("on"); T.onset = performance.now();
         const tick = () => {
           if (T.onset == null || T.done) return;
           const ms = performance.now() - T.onset;
@@ -206,12 +218,12 @@
           if (ms > 30000) { T.rts.push(30000); return schedule(); }   // no response: counted as a 30 s lapse
           T.raf = requestAnimationFrame(tick);
         };
-        tick();
-      }, (isi[0] + Math.random() * (isi[1] - isi[0])) * 1000);
+        T.raf = requestAnimationFrame(tick);
+      }), (isi[0] + Math.random() * (isi[1] - isi[0])) * 1000);
     };
     const respond = (e) => {
       if (T.done || !T.end) return;
-      if (e.type === "keydown" && e.code !== "Space") return;
+      if (e.type === "keydown" && (e.code !== "Space" || e.repeat)) return;   // a held key is not a response
       e.preventDefault();
       const now = performance.now();
       if (T.onset == null) { T.fs += 1; cnt.textContent = "Too early"; return; }
@@ -255,7 +267,7 @@
       openCheckin();
     };
     const tap = (e) => {
-      if (e.type === "keydown" && e.code !== "Space") return;
+      if (e.type === "keydown" && (e.code !== "Space" || e.repeat)) return;
       e.preventDefault(); taps.push(performance.now());
       if (taps.length === 1) timer = setTimeout(() => end(false), 15000);
       cnt.textContent = `${taps.length} beats`;
@@ -275,6 +287,17 @@
   }
   window.healthTab = () => { if (!H.started) start(); else { hbanner(); if (H.res) drawTrends(); } };
   window.crewForReplay = () => (H.log ? { health: H.log, health_day: H.res ? H.res.as_of_day : null } : {});
+  window.crewNextDay = () => (H.log ? Math.max(lastDay(), 1) : 1);
+  window.addCrewDose = (e) => {                    // a storm dose from the Replay tab
+    if (!H.log) return "Open the Crew health tab first.";
+    const day = Math.round(Number(e.day));
+    if (!(day >= 0 && day <= 5000)) return "Enter the mission day of the storm.";
+    const r3 = (x) => Math.round(Math.max(0, Number(x) || 0) * 1000) / 1000;
+    H.log.radiation_events = H.log.radiation_events.concat([{ day, bfo: r3(e.bfo), eye: r3(e.eye), skin: r3(e.skin),
+      label: String(e.label || "Solar storm").slice(0, 80) }]);
+    persist(); renderEvents(); H.day = null; assess();
+    return `Added on mission day ${day} to ${H.mode === "own" ? "your log" : "the demo astronaut (this visit only)"}. Open Crew health to see your updated dose budget.`;
+  };
   window.addEventListener("resize", () => { if (H.res && visible()) drawTrends(); });
   if (visible()) start();
 })();

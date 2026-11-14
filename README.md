@@ -15,7 +15,7 @@ Open the app: the **Crew health** tab shows a synthetic demo astronaut (red bann
 3. Save. After 5 check-ins (4 reaction tests) the monitor has your personal baseline and flags changes.
 4. On **Replay a storm**, tick “Apply the crew health state” to see SHELTER shelter earlier and hold EVAs for a tired or dose-limited crew member.
 
-The log stays in your browser (export/import as JSON); the server computes and stores nothing. Indicators, thresholds and sources: Method and sources tab, and `shelter/health/models.py`.
+The log is saved only in your browser (export/import as JSON). Each assessment is computed by the server, which keeps nothing; run `python -m shelter.server.app` on a laptop and the whole health monitor works with no internet at all. Indicators, thresholds and sources: Method and sources tab, and `shelter/health/models.py`.
 
 ## Quick start (local)
 

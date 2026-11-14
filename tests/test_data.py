@@ -35,6 +35,26 @@ class OmniParser(unittest.TestCase):
         with self.assertRaises(omni.OmniFormatError):
             omni.parse_omni2("2012 1 0 1 2 3\n" * 50, 2012)
 
+    def test_real_nasa_extended_lines(self):
+        """Regression: real NASA OMNI2 'extended' lines have 57 words (Lyman-alpha and proton QI
+        appended). The parser once accepted only 55 and rejected every real line. Fixture: the
+        first 8 hours of 2000 from NASA/GSFC SPDF OMNIWeb (low_res_omni/extended), as shipped in
+        the pyspaceweather test suite; NASA data, unmodified."""
+        text = (Path(__file__).parent / "fixtures" / "omni2_extended_2000_day1.dat").read_text()
+        self.assertEqual({len(ln.split()) for ln in text.splitlines()}, {57})
+        times, flux = omni.parse_omni2(text, 2000)
+        self.assertEqual(len(times), 8)
+        np.testing.assert_allclose(flux[5], [73.10, 15.20, 2.52, 0.76, 0.44, 0.34])
+        self.assertTrue(np.isnan(flux[0]).all())                 # fill values on the real file
+        self.assertEqual(str(times[5]), "2000-01-01T05:00:00")
+        line = text.splitlines()[5]                               # real line, big value merges fields
+        a, b = omni.COLUMNS[42]
+        merged = line[:a] + "1234567.89" + line[b:]
+        self.assertEqual(len(merged.split()), 56)
+        times, flux = omni.parse_omni2("\n".join(text.splitlines()[:5] + [merged]), 2000)
+        self.assertAlmostEqual(flux[5][0], 1234567.89)
+        self.assertAlmostEqual(flux[5][3], 0.76)
+
     def test_fixed_width_rows_with_merged_fields(self):
         """A value that fills its whole field merges with its neighbour; read it by column."""
         quiet = [2.0, 1.0, 0.6, 0.35, 0.25, 0.2]

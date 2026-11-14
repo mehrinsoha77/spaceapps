@@ -266,7 +266,7 @@ $("#run").onclick = async () => {
     const firstAct = state.res.first_action;
     state.k = firstAct ? Math.max(0, state.ev.hours.findIndex((h) => h >= firstAct.t_h)) : 0;
     $("#scrub").value = state.k;
-    redrawReplay(); renderOutcome(); renderCrewRules(); renderLog();
+    redrawReplay(); renderOutcome(); renderCrewRules(); renderDoseToLog(); renderLog();
   } catch (e) { banner("error", e.message); }
   finally { btn.disabled = false; btn.textContent = "Run replay"; }
 };
@@ -340,6 +340,21 @@ function renderOutcome() {
       <tbody>${evas.map((e) => `<tr><td>${esc(e.id)}</td><td>T+${e.planned_start_h} h</td><td>${esc(e.baseline_outcome)}</td><td>${esc(e.policy_outcome)}</td><td class="num">${fmt(e.delay_h, 0)}</td></tr>`).join("") || `<tr><td colspan="5">No EVAs in the schedule.</td></tr>`}</tbody></table></div>`;
 }
 
+function renderDoseToLog() {
+  const old = $("#dose-to-log"); if (old) old.remove();
+  const r = state.res; if (!r || !window.addCrewDose) return;
+  const p = r.bounds.hard.policy;
+  const body = r.synthetic
+    ? `<p class="cmp">This is the SYNTHETIC test storm, so it can’t be added to a crew health log. Pick a real storm.</p>`
+    : `<p class="cmp">Dose received following SHELTER’s decisions (storm only, hard spectrum): blood-forming organs ${fmt(p.bfo)} mSv · eye ${fmt(p.eye)} mSv · skin ${fmt(p.skin, 1)} mSv. Cosmic rays are added by the health log itself.</p>
+       <div class="row-actions"><label class="field inline">Mission day of the storm <input id="dose-day" type="number" min="0" max="5000" step="1"></label>
+       <button class="ghost" id="dose-add">Add to my log</button></div><p class="hint" id="dose-msg"></p>`;
+  $("#outcome").insertAdjacentHTML("beforeend", `<div class="out-card" id="dose-to-log" style="grid-column:1/-1"><h3>Add this storm to the crew health log</h3>${body}</div>`);
+  if (r.synthetic) return;
+  $("#dose-day").value = window.crewNextDay ? window.crewNextDay() : 1;
+  $("#dose-add").onclick = () => { $("#dose-msg").textContent = window.addCrewDose({ day: $("#dose-day").value,
+    bfo: p.bfo, eye: p.eye, skin: p.skin, label: `${state.ev.event.title} (SHELTER replay)` }); };
+}
 function renderCrewRules() {
   const cr = state.res && state.res.crew_rules;
   const old = $("#crew-rules"); if (old) old.remove();
