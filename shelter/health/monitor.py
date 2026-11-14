@@ -15,6 +15,7 @@ crew and their flight surgeon, not diagnoses.
 import numpy as np
 
 from ..physics.limits import GCR_CRUISE_MSV_PER_DAY
+from ..planner.engine import Policy
 from . import models as m
 
 MAX_CHECKINS = 2000
@@ -36,14 +37,14 @@ SOURCES = {
     "ncrp132": "NCRP Report 132 short-term limits; NASA-STD-3001 career limit",
     "cdc_ars": "CDC: acute radiation syndrome requires a whole-body dose above 0.7 Gy",
     "leblanc": "LeBlanc et al. 2000: BMD loss 1.06-1.56 %/month in long-duration flight",
-    "nasa_co2": "NASA-STD-3001 Vol. 2 [V2 6004]: 1-hour average ppCO2 <= 3 mmHg",
+    "nasa_co2": "NASA-STD-3001 Vol. 2 [V2 6004]: 1-hour average ppCO2 ≤ 3 mmHg",
     "law2014": "Law et al. 2014 (J Occup Environ Med): headache odds ~double per +1 mmHg CO2",
     "ochmo_co2": "NASA OCHMO: 7-day average < 2.5 mmHg keeps headache risk < 1 %",
     "taskforce": "Task Force ESC/NASPE 1996: HRV standards (RMSSD, SDNN)",
-    "basner2011": "Basner, Mollicone & Dinges 2011: 3-min PVT-B, lapse >= 355 ms",
+    "basner2011": "Basner, Mollicone & Dinges 2011: 3-min PVT-B, lapse ≥ 355 ms",
     "borbely": "Two-process model of sleep (Daan, Beersma & Borbely 1984)",
     "crucian": "Crucian et al. 2016, 2018: immune dysregulation and symptoms in long-duration flight",
-    "spc": "Team choice: |z| >= 2 watch, >= 3 act against the astronaut's own baseline",
+    "spc": "Team choice: |z| ≥ 2 watch, ≥ 3 act against the astronaut's own baseline",
 }
 
 
@@ -351,9 +352,17 @@ def flight_rule_overrides(ledger, cognition_status, sleep):
     rem = ledger["remaining30_bfo_msv"]
     out, reasons = {"shelter_trigger_max_msv": max(0.1, 0.05 * rem),
                     "eva_start_bfo_max_msv": max(0.05, 0.02 * rem)}, []
-    reasons.append(f"{rem:.0f} mSv of your 30-day radiation budget (blood-forming organs) is left, so during a "
-                   f"storm you are sent to the shelter once {out['shelter_trigger_max_msv']:.1f} mSv is projected in the "
-                   f"cabin (or earlier), and a spacewalk starts only if under {out['eva_start_bfo_max_msv']:.1f} mSv is projected.")
+    std = Policy()
+    shelter = min(std.shelter_trigger_msv, out["shelter_trigger_max_msv"])
+    eva = min(std.eva_start_bfo_msv, out["eva_start_bfo_max_msv"])
+    if shelter < std.shelter_trigger_msv or eva < std.eva_start_bfo_msv:
+        reasons.append(f"Only {rem:.0f} mSv of your 30-day radiation budget is left, so your storm rules are stricter: "
+                       f"shelter once {shelter:.2f} mSv is projected in the cabin (standard {std.shelter_trigger_msv:g}), "
+                       f"and start a spacewalk only below {eva:.2f} mSv projected (standard {std.eva_start_bfo_msv:g}).")
+    else:
+        reasons.append(f"{rem:.0f} mSv of your 30-day radiation budget is left: the standard storm rules apply "
+                       f"(shelter once {std.shelter_trigger_msv:g} mSv is projected in the cabin; spacewalk only below "
+                       f"{std.eva_start_bfo_msv:g} mSv).")
     hold = cognition_status == m.ACT or (sleep is not None and sleep["status"] == m.ACT)
     out["crew_eva_hold"] = bool(hold)
     if hold:

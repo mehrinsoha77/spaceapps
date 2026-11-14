@@ -234,7 +234,7 @@
     };
     $("#pvt-stop").onclick = () => finish(true);
     document.addEventListener("keydown", respond); box.addEventListener("pointerdown", respond);
-    setTimeout(() => { if (!T.done) { T.end = performance.now() + seconds * 1000; schedule(); } }, 1500);
+    setTimeout(() => { if (!T.done) { T.end = performance.now() + seconds * 1000; meta.textContent = `${seconds} s test · running`; schedule(); } }, 1500);
   }
   $("#hc-pvt").onclick = () => runPVT(180, "pvt-b");
   $("#hc-pvt-in").onclick = () => runPVT(180, "pvt-b");

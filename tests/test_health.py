@@ -262,6 +262,8 @@ class Assessment(unittest.TestCase):
         o = a["flight_rules"]["overrides"]
         self.assertAlmostEqual(o["shelter_trigger_max_msv"], 0.5)
         self.assertAlmostEqual(o["eva_start_bfo_max_msv"], 0.2)
+        self.assertIn("stricter", a["flight_rules"]["reasons"][0])
+        self.assertIn("standard storm rules apply", monitor.assess({})["flight_rules"]["reasons"][0])
         pol = monitor.apply_to_policy(engine.Policy(), a["flight_rules"])
         self.assertAlmostEqual(pol.shelter_trigger_msv, 0.5)
         self.assertAlmostEqual(pol.eva_start_bfo_msv, 0.2)
