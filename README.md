@@ -4,15 +4,15 @@
 
 Built for the NASA Space Apps Challenge 2026, challenge “Create Health Monitoring Software for Astronauts on Space Missions”. **Full write-up: [SOLUTION.md](SOLUTION.md).**
 
-> **How this was built (AI use).** Built by Team ENGENEs with an AI assistant (Claude, Anthropic). The team chose the challenge, set the requirements, made the design decisions and reviewed the results; much of the code, tests and documentation was written by the AI under the team’s direction. Commits made with AI help say so in a `Co-Authored-By: Claude` line.
+> **How this was built.** Built by Team ENGENEs for NASA Space Apps 2026. The team chose the challenge, set the requirements and the scope (including what SHELTER does not claim to measure), made the design decisions and reviewed the results. Code, tests and documentation were written with an AI assistant (Claude, Anthropic); commits made with it carry a `Co-Authored-By: Claude` line.
 
 ## Crew health tab
 
-Open the app: the **Crew health** tab shows a synthetic demo astronaut (red banner) so every indicator is visible. Drag the day slider to see what the monitor knew on any day. Then press **Start my own log** and:
+Open the app: the **Crew health** tab shows a synthetic demo astronaut (red banner) so every indicator is visible. Drag the day slider to see what the monitor knew on any day. Then press **Use my own log** and:
 
-1. Fill in today’s check-in (sleep, wake time, mood, stress, exercise, CO₂, resting heart rate). For HRV, record ~5 minutes at rest with a chest strap or watch and import its RR-interval export (CSV or text; a column headed RR/IBI, or one interval per line, in ms or s).
+1. Fill in today’s check-in (sleep, wake time, mood, stress, exercise, CO₂, resting heart rate). For HRV, record ~5 minutes at rest with a chest strap or watch and import its RR-interval export (CSV or text; a column headed RR/IBI, or one interval per line, in ms or s). No device? Press **Sample: rested** or **Sample: tired and stressed** in the check-in: synthetic 5-minute exports in the same format (also downloadable from `public/samples/`).
 2. Take the **3-minute reaction test (PVT-B)** or the 60-second demo version.
-3. Save. After 5 check-ins (4 reaction tests) the monitor has your personal baseline and flags changes.
+3. Save. Each card shows your latest value straight away; after 5 check-ins (3 reaction tests) the monitor has your personal baseline and flags changes against it.
 4. On **Replay a storm**, tick “Apply the crew health state” to see SHELTER shelter earlier and hold EVAs for a tired or dose-limited crew member.
 
 The log is saved only in your browser (export/import as JSON). Each assessment is computed by the server, which keeps nothing; run `python -m shelter.server.app` on a laptop and the whole health monitor works with no internet at all. Indicators, thresholds and sources: Method and sources tab, and `shelter/health/models.py`.
@@ -28,7 +28,7 @@ python -m shelter.server.app             # open http://127.0.0.1:8000
 
 Offline / on stage: `SHELTER_OFFLINE=1 python -m shelter.server.app` uses cached data only.
 
-Tests: `python -m unittest discover -s tests -t .`
+Tests: `python -m unittest discover -s tests -t .` (GitHub Actions runs them on every push)
 Backtest every cached storm: `python scripts/run_backtest.py`
 
 ## Deploy on Vercel
@@ -37,10 +37,10 @@ Backtest every cached storm: `python scripts/run_backtest.py`
 2. Optional: add the environment variable `NASA_API_KEY` (Settings → Environment Variables).
 3. Deploy and open the URL. Each storm is downloaded from NASA SPDF the first time it is opened (a few seconds), then cached.
 
-To make the deployment independent of NASA's servers (recommended before judging):
+To make the deployment independent of NASA's servers, bundle the storm data into `data/bundled/` (~2 MB). On GitHub: **Actions → Bundle NASA storm data → Run workflow**. It downloads the data on GitHub's servers, checks that every storm replays from the bundle alone, and commits it; Vercel then redeploys. Or locally:
 
 ```bash
-python scripts/fetch_data.py --bundle    # copies the storm data into data/bundled/ (~2 MB)
+python scripts/fetch_data.py --bundle    # copies the storm data into data/bundled/
 git add data/bundled && git commit -m "Bundle storm data" && git push
 ```
 

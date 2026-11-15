@@ -5,6 +5,7 @@ import io
 import json
 import math
 import unittest
+from pathlib import Path
 
 import numpy as np
 
@@ -233,6 +234,23 @@ class Assessment(unittest.TestCase):
         a = monitor.assess(log_with(cs))
         self.assertEqual(a["systems"]["cardiovascular"]["status"], m.ACT)
         self.assertEqual(len(a["trends"]["rmssd"]), 7)
+
+    def test_sample_heart_files_show_values_before_baseline(self):
+        """The sample exports offered in the app parse, and a first check-in already shows the value."""
+        root = Path(__file__).resolve().parent.parent / "public" / "samples"
+        expect = {"rested": (58, 46), "tired": (71, 19)}
+        for name, (hr, rmssd) in expect.items():
+            lines = (root / f"heart-rr-{name}.csv").read_text().splitlines()
+            self.assertEqual(lines[0], "timestamp;RR-interval [ms]")
+            rr = [float(l.split(";")[1]) for l in lines[1:]]
+            h = m.hrv(rr)
+            self.assertAlmostEqual(h["hr_bpm"], hr, delta=1)
+            self.assertAlmostEqual(h["rmssd_ms"], rmssd, delta=1)
+            ind = monitor.assess(log_with([{"day": 1, "rr_ms": rr}]))["systems"]["cardiovascular"]["indicators"]
+            self.assertEqual(ind[1]["value"], f"{rmssd} ms (building baseline: 1/6)")
+            self.assertEqual(ind[0]["value"], f"{hr} bpm (building baseline: 1/6)")
+        a = monitor.assess(log_with([{"day": 1, "sleep_h": 7}]))
+        self.assertEqual(a["systems"]["cardiovascular"]["indicators"][1]["value"], "no data")
 
     def test_pvt_baseline_and_protocols(self):
         good = {"rts": [250] * 50, "protocol": "pvt-b"}

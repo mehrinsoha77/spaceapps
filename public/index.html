@@ -109,7 +109,13 @@
     <fieldset class="grp symptoms" id="hc-sym"><legend>Symptoms today</legend></fieldset>
     <fieldset class="grp tests"><legend>Heart data from a chest strap or watch (optional)</legend>
       <p class="hint">Record about 5 minutes at rest, export the beat-to-beat (RR) intervals from the device’s app as CSV or text, and import the file. SHELTER computes heart rate and heart-rate variability from it. In flight this would come straight from the crew’s wearable.</p>
-      <div class="row-actions"><label class="ghost filebtn">Import heart file (CSV or TXT)<input id="hc-rr-file" type="file" accept=".csv,.txt,text/csv,text/plain" hidden></label></div>
+      <div class="row-actions"><label class="ghost filebtn">Import heart file (CSV or TXT)<input id="hc-rr-file" type="file" accept=".csv,.txt,text/csv,text/plain"></label></div>
+      <p class="hint">No device at hand? Try a sample export (synthetic, 5 minutes at rest):</p>
+      <div class="row-actions">
+        <button class="ghost" type="button" data-rr-sample="rested">Sample: rested</button>
+        <button class="ghost" type="button" data-rr-sample="tired">Sample: tired and stressed</button>
+      </div>
+      <p class="hint">Or download a sample (<a href="samples/heart-rr-rested.csv" download>rested</a>, <a href="samples/heart-rr-tired.csv" download>tired</a>) and import it with the button above.</p>
       <p class="hint" id="hc-rr-done">No heart file attached.</p>
     </fieldset>
     <div class="grp tests">

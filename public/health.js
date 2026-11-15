@@ -147,7 +147,7 @@
     if (H.pvt) c.pvt = { rts: H.pvt.rts, false_starts: H.pvt.false_starts, duration_s: H.pvt.duration_s, protocol: H.pvt.protocol };
     H.log.checkins = H.log.checkins.filter((x) => x.day !== c.day).concat([c]).sort((a, b) => a.day - b.day);
     persist();
-    H.pvt = null; H.rr = null; $("#hc-rr-done").textContent = "No heart file attached.";
+    H.pvt = null; H.rr = null; H.hrAuto = null; $("#hc-rr-done").textContent = "No heart file attached.";
     $("#hc-form").reset(); $("#hc-day").value = c.day + 1;
     $("#h-checkin").close();
     H.day = null; assess();
@@ -269,18 +269,28 @@
     const rr = vals.map((v) => (median < 5 ? v * 1000 : v)).filter((v) => v >= 300 && v <= 2000);
     return rr.length >= 30 ? rr : null;
   }
+  function useRR(text, name) {
+    const rr = parseRR(text);
+    if (!rr) { H.rr = null; $("#hc-rr-done").textContent = `No beat-to-beat (RR) intervals found in ${name}. Export RR intervals, not heart-rate samples.`; return; }
+    H.rr = rr;
+    const hr = 60000 / (rr.reduce((a, b) => a + b, 0) / rr.length);
+    const hrField = $("#hc-hr");
+    if (!hrField.value || hrField.value === H.hrAuto) { H.hrAuto = String(Math.round(hr)); hrField.value = H.hrAuto; }
+    $("#hc-rr-done").textContent = `Imported ${rr.length} beats from ${name} (${(rr.reduce((x, y) => x + y, 0) / 60000).toFixed(1)} min, average ${Math.round(hr)} bpm). HRV is computed when you save.`;
+  }
   $("#hc-rr-file").onchange = (ev) => {
     const f = ev.target.files[0]; if (!f) return;
-    f.text().then((t) => {
-      const rr = parseRR(t);
-      ev.target.value = "";
-      if (!rr) { H.rr = null; $("#hc-rr-done").textContent = `No beat-to-beat (RR) intervals found in ${f.name}. Export RR intervals, not heart-rate samples.`; return; }
-      H.rr = rr;
-      const hr = 60000 / (rr.reduce((a, b) => a + b, 0) / rr.length);
-      if (!$("#hc-hr").value) $("#hc-hr").value = Math.round(hr);
-      $("#hc-rr-done").textContent = `Imported ${rr.length} beats from ${f.name} (${(rr.reduce((x, y) => x + y, 0) / 60000).toFixed(1)} min, average ${Math.round(hr)} bpm). HRV is computed when you save.`;
-    }).catch((e) => { $("#hc-rr-done").textContent = `Could not read that file: ${e.message}`; });
+    f.text().then((t) => { ev.target.value = ""; useRR(t, f.name); })
+      .catch((e) => { $("#hc-rr-done").textContent = `Could not read that file: ${e.message}`; });
   };
+  document.querySelectorAll("[data-rr-sample]").forEach((b) => {
+    b.onclick = () => {
+      const file = `heart-rr-${b.dataset.rrSample}.csv`;
+      fetch(`samples/${file}`).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); })
+        .then((t) => useRR(t, `the sample file ${file} (synthetic)`))
+        .catch((e) => { $("#hc-rr-done").textContent = `Could not load the sample: ${e.message}`; });
+    };
+  });
 
   /* ------------------------------------------------------------ boot */
   async function start() {

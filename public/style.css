@@ -121,8 +121,8 @@ button.primary {
 button.primary:hover { box-shadow: 0 0 32px rgba(47, 212, 255, 0.65); }
 button.primary:active { transform: translateY(1px); }
 button.primary:disabled { opacity: .6; cursor: progress; }
-button.ghost { background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; cursor: pointer; color: var(--ink); transition: border-color .2s, background .2s; }
-button.ghost:hover { border-color: var(--shield); background: rgba(47, 212, 255, 0.08); }
+button.ghost, label.ghost { background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; cursor: pointer; color: var(--ink); transition: border-color .2s, background .2s; }
+button.ghost:hover, label.ghost:hover, label.ghost:focus-within { border-color: var(--shield); background: rgba(47, 212, 255, 0.08); }
 
 .stage { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .chart-block { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-m); padding: 12px 14px; min-width: 0; backdrop-filter: blur(8px); }
@@ -277,7 +277,10 @@ button.danger { color: var(--hazard); border-color: var(--hazard); }
 .dlg-foot { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
 textarea { width: 100%; border: 1px solid var(--line); border-radius: var(--radius-s); padding: 6px 8px; font: inherit; font-size: 13px; resize: vertical; margin-top: 6px; background: var(--solid); color: var(--ink); }
-.filebtn { cursor: pointer; display: inline-flex; align-items: center; }
+.filebtn { cursor: pointer; display: inline-flex; flex-direction: row; align-items: center; position: relative; font-size: inherit; margin: 0; }
+label.ghost.filebtn { color: var(--ink); }
+.filebtn input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.filebtn:focus-within { outline: 2px solid var(--shield); outline-offset: 2px; }
 .crew-card ul { margin: 6px 0 0; padding-left: 20px; }
 .pvt { position: fixed; inset: 0; z-index: 50; background: rgba(3, 5, 14, .94); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 16px; }
 .pvt-box { width: min(560px, 100%); min-height: 280px; background: radial-gradient(circle at 50% 40%, #13204A, #070A16 70%); border: 1px solid var(--line); border-radius: 22px; box-shadow: 0 0 60px -10px rgba(47, 212, 255, .35); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 20px; cursor: pointer; touch-action: manipulation; user-select: none; }

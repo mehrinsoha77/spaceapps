@@ -238,7 +238,7 @@ shelter/
 ├── scripts/fetch_data.py      download + check everything (run while online); --bundle for deployment
 ├── scripts/run_backtest.py    backtest all cached storms → data/backtest_results.csv
 ├── shelter/health/           crew health monitor: indicator models, assessment, synthetic demo astronaut
-└── tests/                     102 unittest tests, 94% line coverage, incl. real NASA OMNI2 lines (physics, data, planner, health, servers, deployment)
+└── tests/                     103 unittest tests, 94% line coverage, incl. real NASA OMNI2 lines (physics, data, planner, health, servers, deployment)
 ```
 
 **API**

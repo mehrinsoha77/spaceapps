@@ -3,7 +3,8 @@
 Read-only copy of the historical storm data, committed so a deployment (for example
 on Vercel) can replay the storms without contacting NASA during a demo.
 
-Fill it while online, then commit it:
+Fill it with the **Bundle NASA storm data** workflow (GitHub → Actions → Run workflow),
+or locally while online, then commit it:
 
 ```bash
 python scripts/fetch_data.py --bundle

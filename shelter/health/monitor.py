@@ -279,8 +279,8 @@ def assess(raw_or_log, as_of_day=None):
             "notes": ["Bone density is not measured here: that needs a scan. SHELTER tracks the exercise "
                       "countermeasure that protects bone, and what is at stake if it lapses."] + bone["notes"]},
         "cardiovascular": {"status": cardio, "indicators": [
-            {"name": "Resting heart rate", "value": _fmt(z_hr, "bpm")},
-            {"name": "HRV, RMSSD", "value": _fmt(z_rmssd, "ms")},
+            {"name": "Resting heart rate", "value": _fmt(z_hr, "bpm", hr_series)},
+            {"name": "HRV, RMSSD", "value": _fmt(z_rmssd, "ms", [h["rmssd_ms"] for _, h in hrv_rows])},
             {"name": "Cabin CO2, 7-day average",
              "value": "no data" if env["mean7_mmhg"] is None else f"{env['mean7_mmhg']:.1f} mmHg"}]},
         "behavioral": {"status": behav, "indicators": [
@@ -289,7 +289,7 @@ def assess(raw_or_log, as_of_day=None):
              (f"{pvts[-1][1]['lapses']} (building baseline: {len(pvts)}/4 tests)" if pvts else "no test yet")},
             {"name": "Sleep pressure index", "value": "no data" if not sleep else f"{sleep['index']:.2f}",
              "note": "1.0 = rested"},
-            {"name": "Mood / stress", "value": _fmt(z_mood, "/10") + " · " + _fmt(z_stress, "/10")}]},
+            {"name": "Mood / stress", "value": _fmt(z_mood, "/10", _col(cs, "mood")) + " · " + _fmt(z_stress, "/10", _col(cs, "stress"))}]},
     }
     stressors = {
         "radiation": {"status": led["status"], "value": f"{b['d30_msv']:.0f} of {b['limit30_msv']:.0f} mSv",
@@ -315,10 +315,14 @@ def assess(raw_or_log, as_of_day=None):
     }
 
 
-def _fmt(z, unit):
-    if z is None:
-        return "building baseline"
-    return f"{z['latest']:.0f} {unit} (baseline {z['mean']:.0f})"
+def _fmt(z, unit, series=(), n_base=m.N_BASELINE):
+    """Latest value against the baseline; before a baseline exists, the latest value and progress."""
+    if z is not None:
+        return f"{z['latest']:.0f} {unit} (baseline {z['mean']:.0f})"
+    vals = [v for v in series if v is not None]
+    if not vals:
+        return "no data"
+    return f"{vals[-1]:.0f} {unit} (building baseline: {len(vals)}/{n_base + 1})"
 
 
 def _trends(cs, pvts, hrv_rows):
