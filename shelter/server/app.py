@@ -136,12 +136,14 @@ def api_event(q, _b):
     i0 = p.t0_index
     sl = slice(i0, None)
     ch = {str(int(e)): series.flux[sl, k] for k, e in enumerate(series.energies)}
+    gap = p.missing[sl]                   # no data: send null so charts show a gap, not a quiet zero
+    nogap = lambda a: np.where(gap, np.nan, a)   # noqa: E731
     window_h = float(p.hours[-1] - p.hours[i0])
     return {
         "id": eid, "event": events.get_event(eid), "times": p.times_iso[i0:],
-        "hours": p.hours[sl] - p.hours[i0], "channels": ch, "sep10": p.j10[sl],
-        "rates": {place: {t: p.rates["hard"][place][t][sl] for t in engine.TARGETS} for place in engine.PLACES},
-        "rates_soft": {place: {"bfo": p.rates["soft"][place]["bfo"][sl]} for place in engine.PLACES},
+        "hours": p.hours[sl] - p.hours[i0], "channels": ch, "sep10": nogap(p.j10[sl]),
+        "rates": {place: {t: nogap(p.rates["hard"][place][t][sl]) for t in engine.TARGETS} for place in engine.PLACES},
+        "rates_soft": {place: {"bfo": nogap(p.rates["soft"][place]["bfo"][sl])} for place in engine.PLACES},
         "markers": markers, "status": status, "notes": series.notes, "synthetic": series.synthetic,
         "source": series.source, "window_h": window_h,
         "default_schedule": [asdict(a) for a in engine.default_schedule(window_h)],

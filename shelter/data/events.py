@@ -56,6 +56,22 @@ def _event_cache(event_id):
     return config.CACHE_DIR / "events" / event_id
 
 
+_COVERAGE = {}
+
+
+def coverage(event_id):
+    """Fraction of the storm's hours (start..end) with >10 MeV data, from local data only; None if not local."""
+    key = (event_id, str(config.CACHE_DIR), str(config.BUNDLED_DIR))
+    if key not in _COVERAGE:
+        ev = get_event(event_id)
+        try:
+            s = omni.load_window(ev["start"] + "T00:00:00", ev["end"] + "T23:00:00", lead_in_h=0)
+        except Exception:                 # not downloaded yet, or unreadable: say nothing
+            return None
+        _COVERAGE[key] = float(np.isfinite(s.channel(10.0)).mean())
+    return _COVERAGE[key]
+
+
 def load_event(event_id, with_markers=True):
     """Return (FluxSeries incl. 168 h lead-in, markers, status)."""
     ev = get_event(event_id)
@@ -85,7 +101,8 @@ def availability():
             dirs = (config.BUNDLED_DIR / "omni", config.CACHE_DIR / "omni")
             ok = all(any((d / f"omni2_{y}_protons.npz").exists() or (d / f"omni2_{y}.dat").exists()
                          for d in dirs) for y in years)
-        out.append({**ev, "cached": ok, "loadable": ok or not config.OFFLINE})
+        cov = 1.0 if ev.get("synthetic") else coverage(ev["id"]) if ok else None
+        out.append({**ev, "cached": ok, "loadable": ok or not config.OFFLINE, "coverage": cov})
     return out
 
 

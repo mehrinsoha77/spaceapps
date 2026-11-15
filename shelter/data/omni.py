@@ -152,6 +152,12 @@ def load_window(start, end, lead_in_h=168):
                         source="NASA SPDF OMNI2 hourly (GOES/IMP proton fluxes)")
     if grid.size > m.sum():
         series.notes.append(f"{grid.size - int(m.sum())} hours are missing from the OMNI2 file in this window.")
-    if np.isnan(series.channel(10.0)).mean() > 0.5:
-        series.notes.append("More than half of the >10 MeV values are missing in this window.")
+    gap = float(np.isnan(series.channel(10.0)).mean())
+    if gap >= 0.99:
+        series.notes.append("NASA OMNI2 has no >10 MeV proton data for this storm's window (a gap in the "
+                            "original spacecraft record), so there is nothing to replay: every hour is a data gap.")
+    elif gap > 0.05:
+        series.notes.append(f"NASA OMNI2 has no >10 MeV proton data for {gap * 100:.0f} % of the hours in this "
+                            "window (gaps in the original spacecraft record). Those hours count as unknown, never "
+                            "as quiet, and add no dose, so storm doses here are a lower bound.")
     return series

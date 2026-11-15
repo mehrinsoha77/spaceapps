@@ -197,7 +197,9 @@ $("#add-burn").onclick = () => schedRow({ id: `BURN-${$("#sched-body").children.
 $("#reset-sched").onclick = resetSchedule;
 
 function eventLabel(e) {
-  return e.title + (e.cached ? "" : e.loadable ? " – loads from NASA on first use" : " – not downloaded yet");
+  if (e.coverage != null && e.coverage < 0.01) return e.title + " – no NASA proton data for these dates";
+  const cov = e.coverage != null && e.coverage < 0.95 ? ` – NASA data for ${Math.round(e.coverage * 100)} % of hours` : "";
+  return e.title + cov + (e.cached ? "" : e.loadable ? " – loads from NASA on first use" : " – not downloaded yet");
 }
 function rbanner(kind, text) {            // remembered, and shown only while the Replay tab is open
   state.rb = kind ? [kind, text] : null;
@@ -509,10 +511,11 @@ window.addEventListener("resize", () => { clearTimeout(window._rz); window._rz =
   catch (e) { banner("error", `Server not reachable: ${e.message}`); return; }
   renderPolicy();
   const sel = $("#event");
-  sel.innerHTML = state.meta.events.map((e) => `<option value="${esc(e.id)}">${esc(eventLabel(e))}</option>`).join("");
+  const noData = (e) => e.coverage != null && e.coverage < 0.01;
+  sel.innerHTML = state.meta.events.map((e) => `<option value="${esc(e.id)}"${noData(e) ? " disabled" : ""}>${esc(eventLabel(e))}</option>`).join("");
   const evs = state.meta.events;
-  const first = evs.find((e) => e.cached && !e.synthetic) || evs.find((e) => e.id === "2012-03" && e.loadable)
-    || evs.find((e) => e.synthetic);
+  const first = evs.find((e) => e.id === "2012-03" && e.loadable)            // MSL/RAD benchmark, full NASA coverage
+    || evs.find((e) => e.cached && !e.synthetic && !noData(e)) || evs.find((e) => e.synthetic);
   sel.value = first.id;
   sel.onchange = () => loadEvent(sel.value);
   if (state.meta.offline) document.title = "SHELTER (offline)";

@@ -48,7 +48,7 @@ Preview deployments ask visitors to log in to Vercel unless Deployment Protectio
 
 ## Data
 
-- NASA SPDF OMNI2 hourly proton fluxes (historical storms)
+- NASA SPDF OMNI2 hourly proton fluxes (historical storms). Complete from 2012 on; NASA's record for the older storms has gaps (44–89 % of hours covered, none from October 2001 to July 2003). The storm list shows each storm's coverage, and missing hours count as unknown, never as quiet.
 - NOAA SWPC real-time GOES integral protons (live mode)
 - NASA DONKI flares, CMEs and SEP events (timeline markers)
 - MSL/RAD cruise measurements (Guo et al. 2015) for validation

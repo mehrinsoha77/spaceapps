@@ -18,8 +18,9 @@ class Server(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
-        cls._old = (config.CACHE_DIR, config.OFFLINE)
+        cls._old = (config.CACHE_DIR, config.OFFLINE, config.BUNDLED_DIR)
         config.CACHE_DIR = write_fake_cache(Path(cls.tmp.name))
+        config.BUNDLED_DIR = Path(cls.tmp.name) / "no-bundle"       # keep the real bundle out of these tests
         config.OFFLINE = True
         app._PREP_CACHE.clear()
         app._LIVE_CACHE.update(t=0, value=None)
@@ -31,7 +32,7 @@ class Server(unittest.TestCase):
     def tearDownClass(cls):
         cls.httpd.shutdown()
         cls.httpd.server_close()
-        config.CACHE_DIR, config.OFFLINE = cls._old
+        config.CACHE_DIR, config.OFFLINE, config.BUNDLED_DIR = cls._old
         app._PREP_CACHE.clear()
         cls.tmp.cleanup()
 

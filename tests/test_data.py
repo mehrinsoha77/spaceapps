@@ -9,6 +9,7 @@ import numpy as np
 from shelter import config
 from shelter.data import donki, events, omni, swpc
 from shelter.data.series import FluxSeries, causal_background, fill_short_gaps
+from shelter.server import app
 from tests.fakedata import omni_fixed_width_line, omni_year_text, write_fake_cache
 
 
@@ -125,12 +126,13 @@ class Background(unittest.TestCase):
 class EventLoadingFromCache(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self._old = (config.CACHE_DIR, config.OFFLINE)
+        self._old = (config.CACHE_DIR, config.OFFLINE, config.BUNDLED_DIR)
         config.CACHE_DIR = write_fake_cache(Path(self.tmp.name))
+        config.BUNDLED_DIR = Path(self.tmp.name) / "no-bundle"     # keep the real bundle out of these tests
         config.OFFLINE = True
 
     def tearDown(self):
-        config.CACHE_DIR, config.OFFLINE = self._old
+        config.CACHE_DIR, config.OFFLINE, config.BUNDLED_DIR = self._old
         self.tmp.cleanup()
 
     def test_load_event_offline_with_markers(self):
@@ -152,6 +154,35 @@ class EventLoadingFromCache(unittest.TestCase):
         i = int(np.where(s.times == np.datetime64("2012-03-08T07:00:00"))[0][0])
         self.assertTrue(np.isnan(s.flux[i]).all())
         self.assertTrue(any("missing" in n for n in s.notes))
+
+    def test_gaps_report_coverage_and_never_draw_as_quiet(self):
+        """Real OMNI2 years have long gaps (none at all Oct 2001 - Jul 2003): say how much, and show gaps."""
+        path = config.CACHE_DIR / "omni" / "omni2_2012.dat"
+        lines = path.read_text().splitlines()
+        start = (datetime(2012, 3, 6) - datetime(2012, 1, 1)).days * 24
+        for i in range(start, start + 132):            # first half of the 264-hour storm window
+            w = lines[i].split()
+            w[42:48] = ["999999.99"] + ["99999.99"] * 5
+            lines[i] = " ".join(w)
+        path.write_text("\n".join(lines) + "\n")
+        cov = {e["id"]: e["coverage"] for e in events.availability()}
+        self.assertAlmostEqual(cov["2012-03"], 0.5, delta=0.01)
+        self.assertIsNone(cov["1989-10"])               # not downloaded: no claim either way
+        series, _, _ = events.load_event("2012-03")
+        self.assertTrue(any("no >10 MeV proton data for 31 %" in n for n in series.notes), series.notes)
+        empty = omni.load_window("2012-03-06T00:00:00", "2012-03-06T23:00:00", lead_in_h=0)
+        self.assertTrue(any("nothing to replay" in n for n in empty.notes))
+        app._PREP_CACHE.clear()
+        try:
+            ev = app.api_event({"id": ["2012-03"]}, None)
+        finally:
+            app._PREP_CACHE.clear()
+        gap = np.isnan(ev["channels"]["10"])
+        unknown = np.isnan(ev["sep10"])                 # sent as null: drawn as a gap, not as zero
+        self.assertGreater(gap.sum(), 100)
+        self.assertEqual(unknown.sum(), gap.sum() - 3)  # only the causal 3-hour carry-forward is bridged
+        self.assertFalse((unknown & ~gap).any())
+        self.assertTrue((np.isnan(ev["rates"]["cabin"]["bfo"]) == unknown).all())
 
     def test_live_from_cache(self):
         series, meta = swpc.load_live()

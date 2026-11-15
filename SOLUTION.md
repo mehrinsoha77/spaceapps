@@ -90,6 +90,8 @@ Say "partially novel: a decision layer and an honest evaluation on top of establ
 | **NASA-STD-3001** limits (600 mSv career; 250 mSv SPE shelter design threshold) | NASA OCHMO | Reference lines | Technical brief |
 | **NIST PSTAR** proton stopping powers | NIST | Physics unit tests | Published table values |
 
+**Coverage of the real OMNI2 proton record** (measured on the bundled NASA files, >10 MeV, storm window): complete for January, March and May 2012 and September 2017 (so the MSL/RAD benchmark rests on complete data); 89 % of hours for Bastille Day 2000, 71 % for October 1989, 55 % for January 2005, 44 % for Halloween 2003, and none for November 2001 (NASA's file has no proton data from October 2001 to July 2003). SHELTER shows each storm's coverage in the storm list, cannot replay November 2001, draws gaps as gaps, holds EVA starts and shelter exits while data is missing, and counts no dose for missing hours, so storm doses for the older storms are lower bounds.
+
 Get a free NASA API key at api.nasa.gov and set `NASA_API_KEY`. The `DEMO_KEY` default is heavily rate-limited.
 
 ---
@@ -238,7 +240,7 @@ shelter/
 ├── scripts/fetch_data.py      download + check everything (run while online); --bundle for deployment
 ├── scripts/run_backtest.py    backtest all cached storms → data/backtest_results.csv
 ├── shelter/health/           crew health monitor: indicator models, assessment, synthetic demo astronaut
-└── tests/                     103 unittest tests, 94% line coverage, incl. real NASA OMNI2 lines (physics, data, planner, health, servers, deployment)
+└── tests/                     104 unittest tests, 94% line coverage, incl. real NASA OMNI2 lines (physics, data, planner, health, servers, deployment)
 ```
 
 **API**
