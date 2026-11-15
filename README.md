@@ -1,17 +1,17 @@
 # SHELTER
 
-**Crew health monitoring for long missions.** Astronauts gather their own health indicators (a daily check-in, a 3-minute reaction-time test and a pulse count in the browser, heart-beat intervals from any wearable, cabin CO₂ readings) and SHELTER turns them into a clear status and actions across the four spaceflight stressors (space radiation, isolation and confinement, altered gravity, closed environment) and four health systems (immune, bone, cardiovascular, behavioral). Its radiation side reads NASA and NOAA solar-storm data, computes the dose in the suit, cabin and storm shelter, and decides when to hold an EVA, end it or shelter, adjusted to the astronaut’s own dose budget and alertness. Every decision is tested by replaying real storms hour by hour, never looking ahead.
+**Crew health monitoring for long missions.** Astronauts gather their own health indicators (a daily check-in, a 3-minute reaction-time test in the browser, heart rate and heart-rate variability from a chest strap or watch export, cabin CO₂ readings) and SHELTER turns them into a clear status and actions across the four spaceflight stressors (space radiation, isolation and confinement, altered gravity, closed environment) and four health systems. Alertness, sleep, heart and cabin air are measured; bone and immune health are **not** measured (that needs scans and blood tests), so for those SHELTER tracks the risk drivers, the exercise countermeasure and observable warning signs, and says so on screen. Its radiation side reads NASA and NOAA solar-storm data, computes the dose in the suit, cabin and storm shelter, and decides when to hold an EVA, end it or shelter, adjusted to the astronaut’s own dose budget and alertness. Every decision is tested by replaying real storms hour by hour, never looking ahead.
 
 Built for the NASA Space Apps Challenge 2026, challenge “Create Health Monitoring Software for Astronauts on Space Missions”. **Full write-up: [SOLUTION.md](SOLUTION.md).**
 
-> **AI use.** Parts of this project’s code, tests and documentation were generated with an AI assistant (Claude, Anthropic) and reviewed by the team.
+> **How this was built (AI use).** Built by Team ENGENEs with an AI assistant (Claude, Anthropic). The team chose the challenge, set the requirements, made the design decisions and reviewed the results; much of the code, tests and documentation was written by the AI under the team’s direction. Commits made with AI help say so in a `Co-Authored-By: Claude` line.
 
 ## Crew health tab
 
 Open the app: the **Crew health** tab shows a synthetic demo astronaut (red banner) so every indicator is visible. Drag the day slider to see what the monitor knew on any day. Then press **Start my own log** and:
 
-1. Fill in today’s check-in (sleep, wake time, mood, stress, exercise, CO₂, resting heart rate; paste RR intervals from a wearable for HRV).
-2. Take the **3-minute reaction test (PVT-B)** or the 60-second demo version; tap along with your pulse for 15 s if you have no heart-rate reading.
+1. Fill in today’s check-in (sleep, wake time, mood, stress, exercise, CO₂, resting heart rate). For HRV, record ~5 minutes at rest with a chest strap or watch and import its RR-interval export (CSV or text; a column headed RR/IBI, or one interval per line, in ms or s).
+2. Take the **3-minute reaction test (PVT-B)** or the 60-second demo version.
 3. Save. After 5 check-ins (4 reaction tests) the monitor has your personal baseline and flags changes.
 4. On **Replay a storm**, tick “Apply the crew health state” to see SHELTER shelter earlier and hold EVAs for a tired or dose-limited crew member.
 

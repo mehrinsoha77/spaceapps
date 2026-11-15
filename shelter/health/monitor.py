@@ -268,13 +268,16 @@ def assess(raw_or_log, as_of_day=None):
         "immune": {"status": imm, "indicators": [
             {"name": "Symptoms, last 3 days", "value": ", ".join(SYMPTOMS[s] for s in sorted(sym)) or "none"},
             {"name": "Largest single radiation exposure (BFO)", "value": f"{led['max_event_bfo_msv']:.1f} mSv",
-             "note": "acute radiation syndrome threshold 700"}]},
+             "note": "acute radiation syndrome threshold 700"}],
+            "notes": ["Immune cells are not measured here: that needs a blood test. SHELTER tracks the "
+                      "warning signs a crew member can observe and the radiation dose."]},
         "bone": {"status": bone["status"], "indicators": [
             {"name": "Resistive exercise, last 7 check-ins",
              "value": "no data" if bone["adherence_7d"] is None else f"{bone['adherence_7d'] * 100:.0f} % of prescription"},
             {"name": "Hip bone loss at stake without exercise",
              "value": f"{abs(bone['projected_unprotected_pct']['trochanter']):.1f} %", "note": "LeBlanc 2000 rate"}],
-            "notes": bone["notes"]},
+            "notes": ["Bone density is not measured here: that needs a scan. SHELTER tracks the exercise "
+                      "countermeasure that protects bone, and what is at stake if it lapses."] + bone["notes"]},
         "cardiovascular": {"status": cardio, "indicators": [
             {"name": "Resting heart rate", "value": _fmt(z_hr, "bpm")},
             {"name": "HRV, RMSSD", "value": _fmt(z_rmssd, "ms")},

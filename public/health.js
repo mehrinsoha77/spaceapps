@@ -1,13 +1,13 @@
 "use strict";
 /* Crew health tab: today's status, daily check-in, in-browser reaction test (PVT-B),
-   pulse tapping and history. Uses helpers from app.js ($, esc, api, banner, chart, legend, setupCanvas, C).
+   heart data imported from a wearable, and history. Uses helpers from app.js ($, esc, api, banner, chart, legend, setupCanvas, C).
    The astronaut's own log lives only in this browser (localStorage); the server stores nothing. */
 (function () {
   const KEY_OWN = "shelter-crew-log-v1", KEY_MODE = "shelter-crew-mode-v1";
   const H = { mode: "demo", log: null, demo: null, meta: null, res: null, day: null, pvt: null, started: false };
   const STATUS = { ok: "OK", watch: "Watch", act: "Act now" };
   const SYS = [["behavioral", "Alertness, sleep and mood"], ["cardiovascular", "Heart, circulation and air"],
-    ["bone", "Bone"], ["immune", "Immune"]];
+    ["bone", "Bone: countermeasures"], ["immune", "Immune: warning signs"]];
   const STR = [["radiation", "Space radiation"], ["isolation", "Isolation and confinement"],
     ["gravity", "Altered gravity"], ["environment", "Closed cabin air"]];
   const SYS_NAME = { behavioral: "Alertness", cardiovascular: "Heart and air", bone: "Bone", immune: "Immune", radiation: "Radiation" };
@@ -143,12 +143,11 @@
     [["sleep_h", "#hc-sleep"], ["wake_clock_h", "#hc-wake"], ["mood", "#hc-mood"], ["stress", "#hc-stress"],
      ["resistive_min", "#hc-res"], ["co2_mmhg", "#hc-co2"], ["resting_hr", "#hc-hr"]].forEach(([k, s]) => {
       const v = num(s); if (v != null && isFinite(v)) c[k] = v; });
-    const rr = $("#hc-rr").value.split(/[^0-9.]+/).filter(Boolean).map(Number).filter((x) => isFinite(x));
-    if (rr.length) c.rr_ms = rr.slice(0, 1000);   // a 5-minute HRV recording is ~300-500 beats
+    if (H.rr) c.rr_ms = H.rr.slice(0, 1000);     // a 5-minute HRV recording is ~300-500 beats
     if (H.pvt) c.pvt = { rts: H.pvt.rts, false_starts: H.pvt.false_starts, duration_s: H.pvt.duration_s, protocol: H.pvt.protocol };
     H.log.checkins = H.log.checkins.filter((x) => x.day !== c.day).concat([c]).sort((a, b) => a.day - b.day);
     persist();
-    H.pvt = null;
+    H.pvt = null; H.rr = null; $("#hc-rr-done").textContent = "No heart file attached.";
     $("#hc-form").reset(); $("#hc-day").value = c.day + 1;
     $("#h-checkin").close();
     H.day = null; assess();
@@ -252,28 +251,35 @@
   $("#hc-pvt-in").onclick = () => runPVT(180, "pvt-b");
   $("#hc-pvt-short").onclick = () => runPVT(60, "demo-60s");
 
-  /* ------------------------------------------------------------ pulse tapping */
-  $("#hc-tap").onclick = () => {
-    const ov = $("#tap"), box = $("#tap-box"), cnt = $("#tap-count");
-    const taps = []; let timer = null, done = false;
-    ov.hidden = false; box.focus(); cnt.textContent = "Tap with each beat";
-    const end = (cancel) => {
-      if (done) return; done = true; clearTimeout(timer);
-      document.removeEventListener("keydown", tap); box.removeEventListener("pointerdown", tap); ov.hidden = true;
-      if (cancel) return;
-      if (taps.length < 6) { banner("error", "Too few taps to measure the pulse: try again."); return; }
-      const hr = 60000 * (taps.length - 1) / (taps[taps.length - 1] - taps[0]);
-      if (hr >= 20 && hr <= 250) $("#hc-hr").value = Math.round(hr);
-      openCheckin();
-    };
-    const tap = (e) => {
-      if (e.type === "keydown" && (e.code !== "Space" || e.repeat)) return;
-      e.preventDefault(); taps.push(performance.now());
-      if (taps.length === 1) timer = setTimeout(() => end(false), 15000);
-      cnt.textContent = `${taps.length} beats`;
-    };
-    $("#tap-stop").onclick = () => end(true);
-    document.addEventListener("keydown", tap); box.addEventListener("pointerdown", tap);
+  /* ------------------------------------------------------------ wearable heart file */
+  // An RR-interval export from a chest strap or watch app: a column headed "RR"/"RR-interval"/"IBI"
+  // (Polar, Elite HRV and similar exports), or one interval per line. Milliseconds or seconds.
+  function parseRR(text) {
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) return null;
+    const cells = (l) => l.split(/[;,\t]|\s{2,}/).map((x) => x.trim());
+    const col = cells(lines[0]).map((h) => h.toLowerCase()).findIndex((h) => /(^|[^a-z])(rr|ibi|r-r)([^a-z]|$)/.test(h));
+    const vals = [];
+    for (const l of (col >= 0 ? lines.slice(1) : lines)) {
+      const c = cells(l), v = Number(col >= 0 ? c[col] : c[c.length - 1]);
+      if (isFinite(v) && v > 0) vals.push(v);
+    }
+    if (vals.length < 30) return null;
+    const median = vals.slice().sort((a, b) => a - b)[vals.length >> 1];
+    const rr = vals.map((v) => (median < 5 ? v * 1000 : v)).filter((v) => v >= 300 && v <= 2000);
+    return rr.length >= 30 ? rr : null;
+  }
+  $("#hc-rr-file").onchange = (ev) => {
+    const f = ev.target.files[0]; if (!f) return;
+    f.text().then((t) => {
+      const rr = parseRR(t);
+      ev.target.value = "";
+      if (!rr) { H.rr = null; $("#hc-rr-done").textContent = `No beat-to-beat (RR) intervals found in ${f.name}. Export RR intervals, not heart-rate samples.`; return; }
+      H.rr = rr;
+      const hr = 60000 / (rr.reduce((a, b) => a + b, 0) / rr.length);
+      if (!$("#hc-hr").value) $("#hc-hr").value = Math.round(hr);
+      $("#hc-rr-done").textContent = `Imported ${rr.length} beats from ${f.name} (${(rr.reduce((x, y) => x + y, 0) / 60000).toFixed(1)} min, average ${Math.round(hr)} bpm). HRV is computed when you save.`;
+    }).catch((e) => { $("#hc-rr-done").textContent = `Could not read that file: ${e.message}`; });
   };
 
   /* ------------------------------------------------------------ boot */

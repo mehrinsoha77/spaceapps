@@ -180,6 +180,11 @@ class Assessment(unittest.TestCase):
         self.assertEqual(sev, sorted(sev, reverse=True))
         json.dumps(a)                                           # serialisable
 
+    def test_bone_and_immune_state_what_is_not_measured(self):
+        a = monitor.assess(self.log)
+        self.assertIn("not measured", " ".join(a["systems"]["bone"]["notes"]))
+        self.assertIn("not measured", " ".join(a["systems"]["immune"]["notes"]))
+
     def test_quiet_day_is_ok(self):
         a = monitor.assess(self.log, as_of_day=10)
         self.assertEqual(a["overall"], m.OK)

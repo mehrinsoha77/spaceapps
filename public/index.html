@@ -48,7 +48,6 @@
       <button class="primary big-btn" id="h-checkin-btn">Do today’s check-in (2 min)</button>
       <div class="row-actions">
         <button class="ghost" id="hc-pvt">Reaction test (3 min)</button>
-        <button class="ghost" id="hc-tap">Measure pulse (15 s)</button>
       </div>
     </div>
   </div>
@@ -104,13 +103,15 @@
     </fieldset>
     <fieldset class="grp"><legend>Body and cabin</legend>
       <label>Resistive exercise (min)<input id="hc-res" type="number" min="0" max="600" step="5" placeholder="e.g. 60"></label>
-      <label>Resting heart rate (bpm)<input id="hc-hr" type="number" min="20" max="250" step="1" placeholder="or use Measure pulse"></label>
+      <label>Resting heart rate (bpm)<input id="hc-hr" type="number" min="20" max="250" step="1" placeholder="from your watch or strap"></label>
       <label>Cabin CO₂ (mmHg)<input id="hc-co2" type="number" min="0" max="50" step="0.1" placeholder="from the cabin display"></label>
     </fieldset>
     <fieldset class="grp symptoms" id="hc-sym"><legend>Symptoms today</legend></fieldset>
-    <details class="grp-more"><summary>Heart-beat (RR) intervals from a wearable (optional, for HRV)</summary>
-      <textarea id="hc-rr" rows="2" placeholder="812, 798, 805, …"></textarea>
-    </details>
+    <fieldset class="grp tests"><legend>Heart data from a chest strap or watch (optional)</legend>
+      <p class="hint">Record about 5 minutes at rest, export the beat-to-beat (RR) intervals from the device’s app as CSV or text, and import the file. SHELTER computes heart rate and heart-rate variability from it. In flight this would come straight from the crew’s wearable.</p>
+      <div class="row-actions"><label class="ghost filebtn">Import heart file (CSV or TXT)<input id="hc-rr-file" type="file" accept=".csv,.txt,text/csv,text/plain" hidden></label></div>
+      <p class="hint" id="hc-rr-done">No heart file attached.</p>
+    </fieldset>
     <div class="grp tests">
       <p class="hint" id="hc-pvt-done">No reaction test attached yet.</p>
       <div class="row-actions">
@@ -153,14 +154,6 @@
   </div>
   <p class="pvt-meta" id="pvt-meta"></p>
   <button class="ghost" id="pvt-stop">Stop test</button>
-</div>
-
-<div id="tap" class="pvt" hidden>
-  <div class="pvt-box" id="tap-box" tabindex="0" role="button" aria-label="Tap with each heartbeat">
-    <p class="pvt-count" id="tap-count">Tap with each beat</p>
-    <p class="pvt-help">Feel your pulse at the wrist or neck and tap (or press SPACE) on every beat for 15 seconds. Heart rate only: tapping is not precise enough for HRV.</p>
-  </div>
-  <button class="ghost" id="tap-stop">Cancel</button>
 </div>
 
 <!-- ============================ REPLAY ============================ -->
