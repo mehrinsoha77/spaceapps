@@ -1,0 +1,52 @@
+name: Bundle NASA storm data
+
+# Run by hand (Actions tab > Bundle NASA storm data > Run workflow). Downloads the
+# historical storm data from NASA SPDF (OMNI2) and NASA DONKI, checks that every storm
+# replays from the bundle alone, and commits data/bundled/ so the Vercel deployment
+# never has to contact NASA while someone is using it.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+
+      - name: Download from NASA and NOAA, then bundle
+        # A failure here can be the live NOAA feed or the MSL/RAD table; the check below
+        # decides whether the bundle itself is complete.
+        run: python scripts/fetch_data.py --bundle || true
+
+      - name: Check every storm replays from the bundle alone
+        env:
+          SHELTER_OFFLINE: "1"
+          SHELTER_CACHE: ${{ runner.temp }}/empty-cache
+        run: |
+          python - <<'PY'
+          from shelter.data import events
+          missing = [e["id"] for e in events.availability() if not e["cached"]]
+          assert not missing, f"storms missing from the bundle: {missing}"
+          for e in events.EVENTS:
+              if not e.get("synthetic"):
+                  s, m, st = events.load_event(e["id"])
+                  print(f"{e['id']:10s} {s.times.size:5d} hours  {len(m):3d} DONKI markers  {st}")
+          PY
+          du -sh data/bundled
+
+      - name: Commit the bundle
+        run: |
+          git config user.name "Team ENGENEs"
+          git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
+          git add data/bundled
+          if git diff --cached --quiet; then echo "Bundle unchanged."; exit 0; fi
+          git commit -m "Bundle NASA OMNI2 and DONKI storm data for deployment"
+          git push
