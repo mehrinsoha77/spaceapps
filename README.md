@@ -4,7 +4,6 @@
 
 Built for the NASA Space Apps Challenge 2026, challenge “Create Health Monitoring Software for Astronauts on Space Missions”. **Full write-up: [SOLUTION.md](SOLUTION.md).**
 
-> **How this was built.** Built by Team ENGENEs for NASA Space Apps 2026. The team chose the challenge, set the requirements and the scope (including what SHELTER does not claim to measure), made the design decisions and reviewed the results. Code, tests and documentation were written with an AI assistant (Claude, Anthropic); commits made with it carry a `Co-Authored-By: Claude` line.
 
 ## Crew health tab
 
