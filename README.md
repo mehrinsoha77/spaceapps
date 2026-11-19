@@ -2,8 +2,6 @@
 
 **Crew health monitoring for long missions.** Astronauts gather their own health indicators (a daily check-in, a 3-minute reaction-time test in the browser, heart rate and heart-rate variability from a chest strap or watch export, cabin CO₂ readings) and SHELTER turns them into a clear status and actions across the four spaceflight stressors (space radiation, isolation and confinement, altered gravity, closed environment) and four health systems. Alertness, sleep, heart and cabin air are measured; bone and immune health are **not** measured (that needs scans and blood tests), so for those SHELTER tracks the risk drivers, the exercise countermeasure and observable warning signs, and says so on screen. Its radiation side reads NASA and NOAA solar-storm data, computes the dose in the suit, cabin and storm shelter, and decides when to hold an EVA, end it or shelter, adjusted to the astronaut’s own dose budget and alertness. Every decision is tested by replaying real storms hour by hour, never looking ahead.
 
-Built for the NASA Space Apps Challenge 2026, challenge “Create Health Monitoring Software for Astronauts on Space Missions”. **Full write-up: [SOLUTION.md](SOLUTION.md).**
-
 
 ## Crew health tab
 
